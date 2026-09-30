@@ -1,1212 +1,423 @@
 <!DOCTYPE html>
-<html lang="ko" class="dark">
+<html lang="ko">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>micro:bit v2 센서 실시간 대시보드</title>
-    <!-- Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            darkMode: 'class',
-            theme: {
-                extend: {
-                    colors: {
-                        brand: {
-                            50: '#eef2ff',
-                            500: '#6366f1',
-                            600: '#4f46e5',
-                            700: '#4338ca',
-                            900: '#1e1b4b'
-                        }
-                    },
-                    animation: {
-                        'pulse-fast': 'pulse 0.8s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-                        'equalizer': 'equalizer 1s ease-in-out infinite alternate',
-                    },
-                    keyframes: {
-                        equalizer: {
-                            '0%': { height: '15%' },
-                            '100%': { height: '100%' }
-                        }
-                    }
-                }
-            }
-        }
-    </script>
-    <!-- FontAwesome Icons -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <!-- Chart.js -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <!-- Inter Font -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <style>
-        body { font-family: 'Inter', sans-serif; }
-        /* Custom Scrollbar */
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: #0f172a; }
-        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: #475569; }
-        
-        .glow-temp { box-shadow: 0 0 20px -5px rgba(244, 63, 94, 0.4); }
-        .glow-light { box-shadow: 0 0 20px -5px rgba(251, 191, 36, 0.4); }
-        .glow-sound { box-shadow: 0 0 20px -5px rgba(16, 185, 129, 0.4); }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>마이크로비트 원클릭 펌웨어 업로더 & 대시보드</title>
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- DAPjs (WebUSB 마이크로비트 HEX 업로더) -->
+  <script src="https://cdn.jsdelivr.net/npm/dapjs@0.1.3/dist/dap.umd.min.js"></script>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: #1f2937; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 3px; }
+  </style>
 </head>
-<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col antialiased selection:bg-indigo-500 selection:text-white">
+<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col">
 
-    <!-- Top Header Navigation -->
-    <header class="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-30">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
-            <div class="flex items-center gap-3">
-                <div class="w-10 h-10 rounded-xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
-                    <i class="fa-solid fa-microchip text-xl"></i>
-                </div>
-                <div>
-                    <h1 class="font-bold text-lg leading-tight flex items-center gap-2">
-                        micro:bit v2 <span class="text-xs px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-medium">Web Serial</span>
-                    </h1>
-                    <p class="text-xs text-slate-400 hidden sm:block">실시간 센서 모니터링 & 데이터 분석 대시보드</p>
-                </div>
-            </div>
-
-            <!-- Header Controls & Badges -->
-            <div class="flex items-center gap-3">
-                <!-- Status Badge -->
-                <div id="connectionBadge" class="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-slate-800 text-slate-400 border border-slate-700">
-                    <span class="w-2 h-2 rounded-full bg-slate-500 inline-block" id="statusDot"></span>
-                    <span id="statusText">연결 대기중</span>
-                </div>
-
-                <!-- Simulation Toggle -->
-                <button id="btnToggleDemo" onclick="toggleDemoMode()" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition flex items-center gap-1.5">
-                    <i class="fa-solid fa-flask text-amber-400"></i>
-                    <span id="demoBtnText">시뮬레이션 시작</span>
-                </button>
-
-                <!-- Connect Button -->
-                <button id="btnConnect" onclick="toggleConnect()" class="px-4 py-1.5 rounded-lg text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/20 transition flex items-center gap-2">
-                    <i class="fa-solid fa-plug"></i>
-                    <span id="connectBtnText">마이크로비트 연결</span>
-                </button>
-
-                <!-- Code Guide Modal Button -->
-                <button onclick="openModal('guideModal')" class="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition" title="MakeCode 코드 안내">
-                    <i class="fa-solid fa-code text-sm"></i>
-                </button>
-            </div>
-        </div>
-    </header>
-
-    <!-- Browser Support Warning Banner (if Web Serial not supported) -->
-    <div id="browserWarning" class="hidden bg-amber-500/10 border-b border-amber-500/20 px-4 py-2 text-center text-xs text-amber-300">
-        <i class="fa-solid fa-triangle-exclamation mr-1"></i> 현재 브라우저는 <strong>Web Serial API</strong>를 지원하지 않습니다. Chrome 또는 MS Edge 브라우저를 이용해주세요. (시뮬레이션 모드는 사용 가능합니다)
+  <!-- 헤더 -->
+  <header class="bg-slate-800 border-b border-slate-700 px-6 py-4 flex flex-wrap items-center justify-between gap-4">
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 bg-indigo-600 rounded-lg flex items-center justify-center font-bold text-xl shadow-lg text-white">
+        µb
+      </div>
+      <div>
+        <h1 class="text-xl font-bold tracking-wide text-white">마이크로비트 원클릭 웹 대시보드</h1>
+        <p class="text-xs text-slate-400">깃허브 `sensor.hex` 자동 다운로드 및 WebUSB 펌웨어 업로드</p>
+      </div>
     </div>
 
-    <!-- Alert Banner Container for Threshold Trigger Notification -->
-    <div id="toastContainer" class="fixed top-20 right-4 z-50 flex flex-col gap-2 max-w-sm pointer-events-none"></div>
+    <!-- 연결 제어판 -->
+    <div class="flex flex-wrap items-center gap-3">
+      <div class="flex items-center gap-2 bg-slate-900/80 border border-slate-700 rounded-lg px-3 py-1.5">
+        <label for="baudRate" class="text-xs text-slate-400 font-medium">속도:</label>
+        <select id="baudRate" class="bg-transparent text-sm font-mono focus:outline-none text-indigo-400">
+          <option value="115200" selected>115200</option>
+          <option value="37400">37400</option>
+          <option value="9600">9600</option>
+        </select>
+      </div>
 
-    <!-- Security Error Permission Policy Modal -->
-    <div id="permissionModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
-        <div class="bg-slate-900 border border-rose-500/30 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 relative">
-            <div class="w-12 h-12 rounded-full bg-rose-500/20 border border-rose-500/30 flex items-center justify-center text-rose-400 mx-auto">
-                <i class="fa-solid fa-shield-halved text-2xl"></i>
-            </div>
-            <div class="text-center space-y-2">
-                <h3 class="text-lg font-bold text-slate-100">Web Serial 보안 정책 제한 안내</h3>
-                <p class="text-xs text-slate-300 leading-relaxed">
-                    현재 대시보드가 실행 중인 <strong>미리보기 프레임(iframe)</strong> 환경의 보안 정책(<code class="bg-slate-950 px-1 py-0.5 rounded text-rose-300">Permissions Policy</code>)으로 인해 브라우저의 USB Serial 접근이 차단되었습니다.
-                </p>
-            </div>
+      <div id="statusBadge" class="flex items-center gap-2 bg-rose-500/10 border border-rose-500/30 text-rose-400 px-3 py-1.5 rounded-lg text-xs font-semibold">
+        <span class="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span>
+        <span id="statusText">시리얼 연결 해제됨</span>
+      </div>
 
-            <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 text-xs text-slate-400 space-y-2">
-                <div class="font-semibold text-amber-400 flex items-center gap-1.5">
-                    <i class="fa-solid fa-lightbulb"></i> 권장 이용 방법
-                </div>
-                <p>1. <strong>시뮬레이션 모드 사용:</strong> 아래 버튼을 눌러 센서 데이터 수신 및 차트/경보 기능을 즉시 동작시켜 볼 수 있습니다.</p>
-                <p>2. <strong>실제 마이크로비트 연결:</strong> 웹앱을 독립된 새 브라우저 탭(Chrome/Edge)에서 직접 열어 사용해주세요.</p>
-            </div>
+      <button id="connectBtn" class="bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-sm px-4 py-2 rounded-lg transition shadow-md flex items-center gap-2">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+        시리얼 모니터 연결
+      </button>
 
-            <div class="flex gap-2 pt-2">
-                <button onclick="closeModal('permissionModal')" class="flex-1 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold">닫기</button>
-                <button onclick="closeModal('permissionModal'); startDemoMode();" class="flex-1 px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-amber-600/20">
-                    <i class="fa-solid fa-flask mr-1"></i> 시뮬레이션 시작
-                </button>
-            </div>
+      <button id="exportCsvBtn" class="bg-slate-700 hover:bg-slate-600 text-slate-200 font-medium text-sm px-3 py-2 rounded-lg transition opacity-50 cursor-not-allowed" disabled>
+        CSV 저장
+      </button>
+    </div>
+  </header>
+
+  <main class="flex-1 p-6 space-y-6 max-w-[1600px] w-full mx-auto">
+
+    <!-- 1. 깃허브 sensor.hex 원클릭 업로드 섹션 -->
+    <section class="bg-gradient-to-r from-indigo-900/50 via-slate-800 to-slate-800 border border-indigo-500/40 rounded-xl p-5 shadow-xl">
+      <div class="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="bg-indigo-500/20 text-indigo-300 text-xs px-2.5 py-0.5 rounded-full border border-indigo-500/30 font-mono">sensor.hex</span>
+            <h2 class="text-base font-bold text-white">마이크로비트에 펌웨어 원클릭 업로드</h2>
+          </div>
+          <p class="text-xs text-slate-300 mt-1.5">
+            깃허브에 올라와 있는 <code class="text-amber-300 bg-slate-900 px-1.5 py-0.5 rounded font-mono">sensor.hex</code> 파일 또는 사용자 지정 내 컴퓨터 파일으로 마이크로비트를 바로 라이팅합니다.
+          </p>
         </div>
+
+        <div class="flex flex-wrap items-center gap-3 w-full lg:w-auto">
+          <!-- 깃허브 sensor.hex 주입 버튼 (주 메인 버튼) -->
+          <button id="flashGithubHexBtn" class="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs px-4 py-2.5 rounded-lg transition shadow-lg flex items-center gap-2 border border-indigo-400/30">
+            <svg class="w-4 h-4 text-amber-300 animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+            ⚡ sensor.hex 바로 업로드하기
+          </button>
+
+          <!-- 로컬 다른 파일 선택 (서브 버튼) -->
+          <input type="file" id="hexFileInput" accept=".hex" class="hidden">
+          <button id="selectHexBtn" class="bg-slate-700/80 hover:bg-slate-700 text-slate-300 text-xs px-3 py-2.5 rounded-lg border border-slate-600 transition flex items-center gap-1.5">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+            <span id="fileNameDisplay">다른 HEX 선택</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- 업로드 진행률 바 -->
+      <div id="progressContainer" class="hidden mt-4 pt-3 border-t border-slate-700/60 space-y-1.5">
+        <div class="flex justify-between text-xs text-slate-300">
+          <span id="progressStatus" class="font-medium">준비 중...</span>
+          <span id="progressPercent" class="font-mono font-bold text-emerald-400">0%</span>
+        </div>
+        <div class="w-full bg-slate-950 rounded-full h-3 overflow-hidden p-0.5 border border-slate-800">
+          <div id="progressBar" class="bg-emerald-500 h-full rounded-full transition-all duration-150" style="width: 0%"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. 실시간 센서 모니터링 카드 -->
+    <section>
+      <h2 class="text-xs font-bold tracking-wider text-slate-400 uppercase mb-3 flex items-center gap-1.5">
+        <svg class="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+        실시간 수신 센서 데이터
+      </h2>
+      <div id="cardsGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="bg-slate-800/60 border border-slate-700/60 rounded-xl p-5 text-center py-6 col-span-full">
+          <p class="text-slate-400 text-sm">마이크로비트를 연결하면 실시간 데이터 카드가 여기에 생성됩니다.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. 실시간 차트 & 시리얼 콘솔 -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <section class="lg:col-span-2 bg-slate-800/80 border border-slate-700 rounded-xl p-5 flex flex-col h-[420px]">
+        <h2 class="text-sm font-semibold text-slate-200 mb-3 flex items-center gap-2">
+          <svg class="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"/></svg>
+          실시간 시각화 그래프
+        </h2>
+        <div class="flex-1 w-full h-full min-h-0 relative">
+          <canvas id="realtimeChart"></canvas>
+        </div>
+      </section>
+
+      <section class="bg-slate-800/80 border border-slate-700 rounded-xl p-5 flex flex-col h-[420px]">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-sm font-semibold text-slate-200 flex items-center gap-2">
+            <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 002-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+            시리얼 모니터
+          </h2>
+          <button id="clearLogBtn" class="text-xs text-slate-400 hover:text-slate-200 bg-slate-700 px-2 py-1 rounded">지우기</button>
+        </div>
+        <div id="serialLog" class="flex-1 bg-slate-950 rounded-lg p-3 font-mono text-xs text-emerald-400 overflow-y-auto custom-scrollbar space-y-1 select-text border border-slate-800">
+          <div class="text-slate-500 italic">[시스템] 상단의 'sensor.hex 바로 업로드하기' 또는 '시리얼 모니터 연결'을 클릭하세요.</div>
+        </div>
+      </section>
     </div>
 
-    <!-- Main Content Area -->
-    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+  </main>
 
-        <!-- SENSORS ROW (3 Cards) -->
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+  <script>
+    // 상태 변수
+    let selectedHexBuffer = null;
+    let port = null;
+    let reader = null;
+    let isConnected = false;
+    let serialLogsHistory = [];
+    const maxDataPoints = 30;
 
-            <!-- 1. TEMPERATURE CARD -->
-            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 flex flex-col justify-between relative overflow-hidden transition-all duration-300 hover:border-slate-700">
-                <div class="absolute -right-6 -top-6 w-24 h-24 bg-rose-500/10 rounded-full blur-2xl pointer-events-none"></div>
-                <div>
-                    <div class="flex items-center justify-between mb-3">
-                        <span class="text-xs font-semibold text-rose-400 uppercase tracking-wider flex items-center gap-1.5">
-                            <i class="fa-solid fa-temperature-half"></i> 온도 센서
-                        </span>
-                        <span id="tempStatusBadge" class="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 font-medium">대기중</span>
-                    </div>
+    // DOM 요소 참조
+    const flashGithubHexBtn = document.getElementById('flashGithubHexBtn');
+    const selectHexBtn = document.getElementById('selectHexBtn');
+    const hexFileInput = document.getElementById('hexFileInput');
+    const fileNameDisplay = document.getElementById('fileNameDisplay');
+    const progressContainer = document.getElementById('progressContainer');
+    const progressBar = document.getElementById('progressBar');
+    const progressPercent = document.getElementById('progressPercent');
+    const progressStatus = document.getElementById('progressStatus');
 
-                    <div class="flex items-baseline gap-2 mb-4">
-                        <span id="valTemp" class="text-5xl font-extrabold tracking-tight text-slate-100">--</span>
-                        <span class="text-xl font-medium text-slate-400">°C</span>
-                    </div>
+    const connectBtn = document.getElementById('connectBtn');
+    const exportCsvBtn = document.getElementById('exportCsvBtn');
+    const clearLogBtn = document.getElementById('clearLogBtn');
+    const statusBadge = document.getElementById('statusBadge');
+    const statusText = document.getElementById('statusText');
+    const serialLog = document.getElementById('serialLog');
+    const cardsGrid = document.getElementById('cardsGrid');
+    const baudRateSelect = document.getElementById('baudRate');
 
-                    <!-- Min / Max Stats -->
-                    <div class="grid grid-cols-2 gap-2 text-xs bg-slate-950/60 p-2.5 rounded-xl border border-slate-800/80 mb-4">
-                        <div>
-                            <span class="text-slate-500 block text-[10px]">최저 기록</span>
-                            <span id="valTempMin" class="font-semibold text-slate-300">-- °C</span>
-                        </div>
-                        <div>
-                            <span class="text-slate-500 block text-[10px]">최고 기록</span>
-                            <span id="valTempMax" class="font-semibold text-slate-300">-- °C</span>
-                        </div>
-                    </div>
-                </div>
+    // Chart.js 그래프 초기화
+    const ctx = document.getElementById('realtimeChart').getContext('2d');
+    const realtimeChart = new Chart(ctx, {
+      type: 'line',
+      data: { labels: [], datasets: [] },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: { grid: { color: '#334155' }, ticks: { color: '#94a3b8' } },
+          y: { grid: { color: '#334155' }, ticks: { color: '#94a3b8' } }
+        },
+        plugins: { legend: { labels: { color: '#f8fafc' } } }
+      }
+    });
 
-                <!-- Visual Bar / Gauge -->
-                <div class="space-y-1.5">
-                    <div class="flex justify-between text-[11px] text-slate-400 font-medium">
-                        <span>-10°C</span>
-                        <span>0°C</span>
-                        <span>25°C</span>
-                        <span>50°C</span>
-                    </div>
-                    <div class="w-full bg-slate-950 rounded-full h-3 p-0.5 border border-slate-800 relative overflow-hidden">
-                        <div id="barTemp" class="h-full bg-gradient-to-r from-blue-500 via-emerald-400 to-rose-500 rounded-full transition-all duration-300 w-0"></div>
-                    </div>
-                </div>
-            </div>
+    const chartColors = ['#818cf8', '#34d399', '#fbbf24', '#f87171', '#c084fc'];
+    let colorIndex = 0;
 
-            <!-- 2. LIGHT LEVEL CARD -->
-            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 flex flex-col justify-between relative overflow-hidden transition-all duration-300 hover:border-slate-700">
-                <div class="absolute -right-6 -top-6 w-24 h-24 bg-amber-500/10 rounded-full blur-2xl pointer-events-none"></div>
-                <div>
-                    <div class="flex items-center justify-between mb-3">
-                        <span class="text-xs font-semibold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
-                            <i class="fa-solid fa-sun"></i> 조도 (광도) 센서
-                        </span>
-                        <span id="lightStatusBadge" class="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 font-medium flex items-center gap-1">
-                            <i id="lightIcon" class="fa-solid fa-moon"></i> <span id="lightStatusText">대기중</span>
-                        </span>
-                    </div>
+    // --- 1. 깃허브 `sensor.hex` 파일 자동 다운로드 및 WebUSB 플래싱 ---
+    flashGithubHexBtn.addEventListener('click', async () => {
+      try {
+        progressContainer.classList.remove('hidden');
+        updateProgress(0, '깃허브에서 sensor.hex 파일 불러오는 중...');
 
-                    <div class="flex items-baseline gap-2 mb-4">
-                        <span id="valLight" class="text-5xl font-extrabold tracking-tight text-slate-100">--</span>
-                        <span class="text-xs font-semibold text-slate-500">/ 255</span>
-                    </div>
+        // 깃허브 상의 sensor.hex 파일을 fetch로 로드
+        const response = await fetch('./sensor.hex');
+        if (!response.ok) {
+          throw new Error('sensor.hex 파일을 찾을 수 없습니다. 깃허브 리포지토리에 sensor.hex 파일을 올렸는지 확인해 주세요.');
+        }
 
-                    <!-- Percentage & State -->
-                    <div class="grid grid-cols-2 gap-2 text-xs bg-slate-950/60 p-2.5 rounded-xl border border-slate-800/80 mb-4">
-                        <div>
-                            <span class="text-slate-500 block text-[10px]">밝기 비율</span>
-                            <span id="valLightPercent" class="font-semibold text-amber-300">0 %</span>
-                        </div>
-                        <div>
-                            <span class="text-slate-500 block text-[10px]">주변 상태</span>
-                            <span id="valLightState" class="font-semibold text-slate-300">미측정</span>
-                        </div>
-                    </div>
-                </div>
+        const buffer = await response.arrayBuffer();
+        await flashHexBuffer(buffer, 'sensor.hex (깃허브)');
+      } catch (err) {
+        alert('오류 발생: ' + err.message);
+        appendSystemLog('펌웨어 다운로드/업로드 실패: ' + err.message, true);
+      }
+    });
 
-                <!-- Visual Bar / Radial Indicator -->
-                <div class="space-y-1.5">
-                    <div class="flex justify-between text-[11px] text-slate-400 font-medium">
-                        <span>어두움 (0)</span>
-                        <span>보통 (128)</span>
-                        <span>밝음 (255)</span>
-                    </div>
-                    <div class="w-full bg-slate-950 rounded-full h-3 p-0.5 border border-slate-800 overflow-hidden">
-                        <div id="barLight" class="h-full bg-amber-400 rounded-full transition-all duration-300 w-0 shadow-lg shadow-amber-500/50"></div>
-                    </div>
-                </div>
-            </div>
+    // 내 컴퓨터 파일 선택 시 처리
+    selectHexBtn.addEventListener('click', () => hexFileInput.click());
 
-            <!-- 3. SOUND LEVEL CARD -->
-            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 flex flex-col justify-between relative overflow-hidden transition-all duration-300 hover:border-slate-700">
-                <div class="absolute -right-6 -top-6 w-24 h-24 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none"></div>
-                <div>
-                    <div class="flex items-center justify-between mb-3">
-                        <span class="text-xs font-semibold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
-                            <i class="fa-solid fa-microphone-lines"></i> 음량 (소리) 센서
-                        </span>
-                        <span id="soundStatusBadge" class="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 font-medium">조용함</span>
-                    </div>
-
-                    <div class="flex items-baseline justify-between mb-4">
-                        <div class="flex items-baseline gap-2">
-                            <span id="valSound" class="text-5xl font-extrabold tracking-tight text-slate-100">--</span>
-                            <span class="text-xs font-semibold text-slate-500">/ 255</span>
-                        </div>
-
-                        <!-- Audio Wave Visualizer Animation -->
-                        <div class="flex items-end gap-1 h-8 px-2 py-1 bg-slate-950 rounded-lg border border-slate-800" id="waveVisualizer">
-                            <div class="w-1 bg-emerald-500 rounded-full h-2 transition-all duration-150"></div>
-                            <div class="w-1 bg-emerald-500 rounded-full h-4 transition-all duration-150"></div>
-                            <div class="w-1 bg-emerald-500 rounded-full h-3 transition-all duration-150"></div>
-                            <div class="w-1 bg-emerald-500 rounded-full h-5 transition-all duration-150"></div>
-                            <div class="w-1 bg-emerald-500 rounded-full h-2 transition-all duration-150"></div>
-                        </div>
-                    </div>
-
-                    <!-- Peak Sound Level -->
-                    <div class="grid grid-cols-2 gap-2 text-xs bg-slate-950/60 p-2.5 rounded-xl border border-slate-800/80 mb-4">
-                        <div>
-                            <span class="text-slate-500 block text-[10px]">최대 피크(Peak)</span>
-                            <span id="valSoundPeak" class="font-semibold text-emerald-400">0</span>
-                        </div>
-                        <div>
-                            <span class="text-slate-500 block text-[10px]">소음 경보 조건</span>
-                            <span id="valSoundLimit" class="font-semibold text-slate-300">> 180 기준</span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Multi-segment VU Meter -->
-                <div class="space-y-1.5">
-                    <div class="flex justify-between text-[11px] text-slate-400 font-medium">
-                        <span>VU Meter</span>
-                        <span id="valVuPercent">0%</span>
-                    </div>
-                    <div class="grid grid-cols-12 gap-1 h-3 p-0.5 bg-slate-950 rounded-md border border-slate-800" id="vuSegments">
-                        <!-- 12 segment blocks generated via JavaScript -->
-                    </div>
-                </div>
-            </div>
-
-        </div>
-
-        <!-- LIVE CHART SECTION -->
-        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
-            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4 pb-4 border-b border-slate-800">
-                <div>
-                    <h2 class="text-base font-bold text-slate-100 flex items-center gap-2">
-                        <i class="fa-solid fa-chart-line text-indigo-400"></i> 실시간 센서 트렌드 그래프
-                    </h2>
-                    <p class="text-xs text-slate-400">온도(°C), 광도(0-255), 음량(0-255) 시계열 데이터 타임라인</p>
-                </div>
-
-                <!-- Chart Actions & Settings -->
-                <div class="flex flex-wrap items-center gap-2">
-                    <!-- Sensor Toggles -->
-                    <div class="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800 text-xs">
-                        <button onclick="toggleDataset(0)" id="btnToggleTemp" class="px-2.5 py-1 rounded font-medium bg-rose-500/20 text-rose-300 border border-rose-500/40">온도</button>
-                        <button onclick="toggleDataset(1)" id="btnToggleLight" class="px-2.5 py-1 rounded font-medium bg-amber-500/20 text-amber-300 border border-amber-500/40">광도</button>
-                        <button onclick="toggleDataset(2)" id="btnToggleSound" class="px-2.5 py-1 rounded font-medium bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">음량</button>
-                    </div>
-
-                    <!-- Pause/Resume Chart -->
-                    <button id="btnPauseChart" onclick="toggleChartPause()" class="px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition">
-                        <i class="fa-solid fa-pause mr-1"></i>일시정지
-                    </button>
-
-                    <!-- Reset Chart -->
-                    <button onclick="resetChartData()" class="px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition">
-                        <i class="fa-solid fa-rotate-right mr-1"></i>초기화
-                    </button>
-
-                    <!-- Export CSV Button -->
-                    <button onclick="exportCSV()" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition shadow-md shadow-emerald-600/20">
-                        <i class="fa-solid fa-file-csv mr-1"></i>CSV 저장
-                    </button>
-                </div>
-            </div>
-
-            <!-- Canvas Container -->
-            <div class="w-full h-72 relative">
-                <canvas id="sensorChart"></canvas>
-            </div>
-        </div>
-
-        <!-- BOTTOM SECTION: THRESHOLD ALERTS & SERIAL LOG -->
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-
-            <!-- Threshold & Alert Configuration (1 Col) -->
-            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 flex flex-col justify-between">
-                <div>
-                    <h3 class="text-sm font-bold text-slate-200 mb-1 flex items-center gap-2">
-                        <i class="fa-solid fa-bell text-amber-400"></i> 임계값 경보 설정
-                    </h3>
-                    <p class="text-xs text-slate-400 mb-4">센서 값이 설정치를 초과하면 알림을 표시합니다.</p>
-
-                    <div class="space-y-4 text-xs">
-                        <!-- Temp Threshold -->
-                        <div>
-                            <div class="flex justify-between mb-1">
-                                <label class="text-slate-300 font-medium">고온 경보 (°C)</label>
-                                <span id="lblLimitTemp" class="text-rose-400 font-bold">32°C</span>
-                            </div>
-                            <input type="range" id="inputLimitTemp" min="20" max="50" value="32" oninput="updateLimits()" class="w-full accent-rose-500 h-1.5 bg-slate-950 rounded-lg cursor-pointer">
-                        </div>
-
-                        <!-- Light Threshold -->
-                        <div>
-                            <div class="flex justify-between mb-1">
-                                <label class="text-slate-300 font-medium">고광도 경보 (0-255)</label>
-                                <span id="lblLimitLight" class="text-amber-400 font-bold">220</span>
-                            </div>
-                            <input type="range" id="inputLimitLight" min="50" max="255" value="220" oninput="updateLimits()" class="w-full accent-amber-500 h-1.5 bg-slate-950 rounded-lg cursor-pointer">
-                        </div>
-
-                        <!-- Sound Threshold -->
-                        <div>
-                            <div class="flex justify-between mb-1">
-                                <label class="text-slate-300 font-medium">소음 경보 (0-255)</label>
-                                <span id="lblLimitSound" class="text-emerald-400 font-bold">180</span>
-                            </div>
-                            <input type="range" id="inputLimitSound" min="50" max="255" value="180" oninput="updateLimits()" class="w-full accent-emerald-500 h-1.5 bg-slate-950 rounded-lg cursor-pointer">
-                        </div>
-                    </div>
-                </div>
-
-                <div class="mt-4 pt-4 border-t border-slate-800 flex items-center justify-between">
-                    <span class="text-xs text-slate-400">알림 소리 사용</span>
-                    <label class="relative inline-flex items-center cursor-pointer">
-                        <input type="checkbox" id="chkAudioAlert" class="sr-only peer">
-                        <div class="w-9 h-5 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
-                    </label>
-                </div>
-            </div>
-
-            <!-- Serial Raw Output Log Console (2 Cols) -->
-            <div class="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-2xl p-5 flex flex-col h-full">
-                <div class="flex items-center justify-between mb-3">
-                    <div class="flex items-center gap-2">
-                        <i class="fa-solid fa-terminal text-indigo-400 text-xs"></i>
-                        <h3 class="text-sm font-bold text-slate-200">시리얼 실시간 수신 콘솔</h3>
-                        <span class="text-[10px] text-slate-500 font-mono">115200 baud</span>
-                    </div>
-                    <div class="flex items-center gap-2">
-                        <label class="text-[11px] text-slate-400 flex items-center gap-1 cursor-pointer">
-                            <input type="checkbox" id="chkAutoScroll" checked class="rounded border-slate-700 text-indigo-600 focus:ring-0 bg-slate-950">
-                            자동 스크롤
-                        </label>
-                        <button onclick="clearLogs()" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[11px] text-slate-300 border border-slate-700 transition">
-                            <i class="fa-solid fa-trash-can mr-1"></i>로그 지우기
-                        </button>
-                    </div>
-                </div>
-
-                <div id="consoleLog" class="flex-1 min-h-[160px] max-h-[220px] bg-slate-950 rounded-xl p-3 font-mono text-xs text-emerald-400 overflow-y-auto space-y-1 border border-slate-800/80">
-                    <div class="text-slate-600">[System] 마이크로비트 연결 준비됨. '마이크로비트 연결' 또는 '시뮬레이션 시작'을 누르세요.</div>
-                </div>
-            </div>
-
-        </div>
-
-    </main>
-
-    <!-- MAKECODE CODE GUIDE MODAL -->
-    <div id="guideModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
-        <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-2xl w-full p-6 shadow-2xl space-y-5 relative max-h-[90vh] overflow-y-auto">
-            <button onclick="closeModal('guideModal')" class="absolute top-4 right-4 text-slate-400 hover:text-white text-lg p-1">
-                <i class="fa-solid fa-xmark"></i>
-            </button>
-
-            <div class="flex items-center gap-3">
-                <div class="w-10 h-10 rounded-xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
-                    <i class="fa-solid fa-laptop-code text-lg"></i>
-                </div>
-                <div>
-                    <h3 class="text-lg font-bold text-slate-100">MakeCode 코드 및 연결 가이드</h3>
-                    <p class="text-xs text-slate-400">micro:bit v2에 다운로드할 파이썬 또는 자바스크립트 코드입니다.</p>
-                </div>
-            </div>
-
-            <div class="space-y-3 text-xs text-slate-300">
-                <p>1. <a href="https://makecode.microbit.org" target="_blank" class="text-indigo-400 underline font-semibold">MakeCode 에디터</a>에 접속하여 새 프로젝트를 생성합니다.</p>
-                <p>2. 아래 코드 블록 중 하나를 복사하여 에디터에 붙여넣고 micro:bit v2에 다운로드하세요.</p>
-
-                <!-- Tabs -->
-                <div class="flex border-b border-slate-800 gap-4 pt-2">
-                    <button onclick="switchTab('tab-python', 'tab-js')" id="btnTabPython" class="pb-2 text-xs font-bold border-b-2 border-indigo-500 text-indigo-400">MicroPython</button>
-                    <button onclick="switchTab('tab-js', 'tab-python')" id="btnTabJs" class="pb-2 text-xs font-bold border-b-2 border-transparent text-slate-400 hover:text-slate-200">JavaScript (MakeCode)</button>
-                </div>
-
-                <!-- Python Code -->
-                <div id="tab-python" class="space-y-2">
-                    <div class="relative">
-                        <pre class="bg-slate-950 p-4 rounded-xl font-mono text-emerald-400 border border-slate-800 overflow-x-auto text-xs"><code>def on_forever():
-    t = input.temperature()
-    l = input.light_level()
-    s = input.sound_level()
-    # 파싱 규격 포맷 (Key-Value): T:온도,L:광도,S:음량
-    serial.write_string("T:" + str(t) + ",L:" + str(l) + ",S:" + str(s) + "\n")
-    basic.pause(500)
-
-basic.forever(on_forever)</code></pre>
-                        <button onclick="copyCode('pyCode')" class="absolute top-3 right-3 px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] border border-slate-700">
-                            <i class="fa-regular fa-copy mr-1"></i>복사
-                        </button>
-                    </div>
-                </div>
-
-                <!-- JS Code -->
-                <div id="tab-js" class="space-y-2 hidden">
-                    <div class="relative">
-                        <pre class="bg-slate-950 p-4 rounded-xl font-mono text-emerald-400 border border-slate-800 overflow-x-auto text-xs"><code>basic.forever(function () {
-    let t = input.temperature()
-    let l = input.lightLevel()
-    let s = input.soundLevel()
-    // 파싱 규격 포맷: T:온도,L:광도,S:음량
-    serial.writeString("T:" + t + ",L:" + l + ",S:" + s + "\n")
-    basic.pause(500)
-})</code></pre>
-                        <button onclick="copyCode('jsCode')" class="absolute top-3 right-3 px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] border border-slate-700">
-                            <i class="fa-regular fa-copy mr-1"></i>복사
-                        </button>
-                    </div>
-                </div>
-
-                <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 text-[11px] text-slate-400 space-y-1">
-                    <div class="font-semibold text-slate-300 mb-1"><i class="fa-solid fa-circle-info text-indigo-400 mr-1"></i> 지원되는 다양한 시리얼 전송 포맷:</div>
-                    <div>• <strong>Key-Value:</strong> <code>T:25,L:150,S:60</code></div>
-                    <div>• <strong>JSON:</strong> <code>{"temp":25, "light":150, "sound":60}</code></div>
-                    <div>• <strong>CSV:</strong> <code>25, 150, 60</code> (온도, 광도, 음량 순)</div>
-                </div>
-            </div>
-
-            <div class="pt-2 flex justify-end">
-                <button onclick="closeModal('guideModal')" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold">닫기</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Hidden element for code copying -->
-    <textarea id="pyCode" class="hidden">def on_forever():
-    t = input.temperature()
-    l = input.light_level()
-    s = input.sound_level()
-    serial.write_string("T:" + str(t) + ",L:" + str(l) + ",S:" + str(s) + "\n")
-    basic.pause(500)
-
-basic.forever(on_forever)</textarea>
-    <textarea id="jsCode" class="hidden">basic.forever(function () {
-    let t = input.temperature()
-    let l = input.lightLevel()
-    let s = input.soundLevel()
-    serial.writeString("T:" + t + ",L:" + l + ",S:" + s + "\n")
-    basic.pause(500)
-})</textarea>
-
-    <script>
-        /**
-         * Global Application State Management
-         */
-        const state = {
-            connected: false,
-            demoMode: false,
-            port: null,
-            reader: null,
-            keepReading: false,
-            
-            // Sensor Values
-            temp: 0,
-            light: 0,
-            sound: 0,
-
-            // Calculated Stats
-            minTemp: null,
-            maxTemp: null,
-            soundPeak: 0,
-
-            // Chart Control
-            chartPaused: false,
-            chartInstance: null,
-
-            // Alert Thresholds
-            limits: {
-                temp: 32,
-                light: 220,
-                sound: 180
-            },
-            lastAlertTime: 0,
-
-            // History Log for CSV Export
-            history: []
+    hexFileInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        fileNameDisplay.textContent = file.name;
+        const fileReader = new FileReader();
+        fileReader.onload = async (event) => {
+          await flashHexBuffer(event.target.result, file.name);
         };
+        fileReader.readAsArrayBuffer(file);
+      }
+    });
 
-        // DOM Element Cache
-        const el = {
-            valTemp: document.getElementById('valTemp'),
-            valTempMin: document.getElementById('valTempMin'),
-            valTempMax: document.getElementById('valTempMax'),
-            barTemp: document.getElementById('barTemp'),
-            tempStatusBadge: document.getElementById('tempStatusBadge'),
+    // 공통 WebUSB 펌웨어 플래싱 (라이팅) 함수
+    async function flashHexBuffer(arrayBuffer, sourceName) {
+      if (!('usb' in navigator)) {
+        alert('현재 브라우저는 WebUSB를 지원하지 않습니다. Chrome 또는 Edge 브라우저를 이용해 주세요.');
+        return;
+      }
 
-            valLight: document.getElementById('valLight'),
-            valLightPercent: document.getElementById('valLightPercent'),
-            valLightState: document.getElementById('valLightState'),
-            barLight: document.getElementById('barLight'),
-            lightStatusText: document.getElementById('lightStatusText'),
-            lightIcon: document.getElementById('lightIcon'),
+      // 업로드 중 시리얼 통신 잠시 해제
+      if (isConnected) await disconnectSerial();
 
-            valSound: document.getElementById('valSound'),
-            valSoundPeak: document.getElementById('valSoundPeak'),
-            valVuPercent: document.getElementById('valVuPercent'),
-            soundStatusBadge: document.getElementById('soundStatusBadge'),
+      try {
+        progressContainer.classList.remove('hidden');
+        updateProgress(0, '마이크로비트 장치 검색 중...');
 
-            connectionBadge: document.getElementById('connectionBadge'),
-            statusDot: document.getElementById('statusDot'),
-            statusText: document.getElementById('statusText'),
-            btnConnect: document.getElementById('btnConnect'),
-            connectBtnText: document.getElementById('connectBtnText'),
-            btnToggleDemo: document.getElementById('btnToggleDemo'),
-            demoBtnText: document.getElementById('demoBtnText'),
-            
-            consoleLog: document.getElementById('consoleLog'),
-            chkAutoScroll: document.getElementById('chkAutoScroll'),
-            browserWarning: document.getElementById('browserWarning')
-        };
-
-        // Initialize Application on DOM Ready
-        window.addEventListener('DOMContentLoaded', () => {
-            initVuMeter();
-            initChart();
-            checkBrowserSupport();
+        // ARM Micro:bit Vendor ID: 0x0d28
+        const device = await navigator.usb.requestDevice({
+          filters: [{ vendorId: 0x0d28 }]
         });
 
-        // Check Web Serial Browser Compatibility
-        function checkBrowserSupport() {
-            if (!('serial' in navigator)) {
-                el.browserWarning.classList.remove('hidden');
-                el.btnConnect.disabled = true;
-                el.btnConnect.classList.add('opacity-50', 'cursor-not-allowed');
-            }
+        const transport = new DAPjs.WebUSB(device);
+        const target = new DAPjs.DAPLink(transport);
+
+        target.on(DAPjs.DAPLink.EVENT_PROGRESS, (progress) => {
+          const percent = Math.floor(progress * 100);
+          updateProgress(percent, `마이크로비트에 ${sourceName} 작성 중...`);
+        });
+
+        await target.connect();
+        await target.flash(arrayBuffer);
+        await target.disconnect();
+
+        updateProgress(100, '업로드 완료!');
+        appendSystemLog(`[성공] ${sourceName} 파일이 마이크로비트에 성공적으로 업로드되었습니다.`);
+        alert('마이크로비트에 펌웨어 업로드가 완료되었습니다!');
+      } catch (err) {
+        console.error(err);
+        appendSystemLog('업로드 중 오류 발생: ' + err.message, true);
+      }
+    }
+
+    function updateProgress(percent, statusMsg) {
+      progressBar.style.width = percent + '%';
+      progressPercent.textContent = percent + '%';
+      if (statusMsg) progressStatus.textContent = statusMsg;
+    }
+
+    // --- 2. Web Serial 연결 및 데이터 모니터링 ---
+    connectBtn.addEventListener('click', async () => {
+      if (isConnected) await disconnectSerial();
+      else await connectSerial();
+    });
+
+    clearLogBtn.addEventListener('click', () => { serialLog.innerHTML = ''; });
+    exportCsvBtn.addEventListener('click', exportToCSV);
+
+    async function connectSerial() {
+      try {
+        port = await navigator.serial.requestPort();
+        await port.open({ baudRate: parseInt(baudRateSelect.value, 10) });
+
+        isConnected = true;
+        updateUIConnected(true);
+        appendSystemLog('시리얼 포트 연결 성공!');
+        readSerialData();
+      } catch (err) {
+        appendSystemLog('연결 오류: ' + err.message, true);
+      }
+    }
+
+    async function disconnectSerial() {
+      if (reader) await reader.cancel();
+      if (port) await port.close();
+      isConnected = false;
+      updateUIConnected(false);
+      appendSystemLog('시리얼 포트 연결 해제됨.');
+    }
+
+    function updateUIConnected(connected) {
+      if (connected) {
+        statusBadge.className = "flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 px-3 py-1.5 rounded-lg text-xs font-semibold";
+        statusText.textContent = "시리얼 연결됨";
+        connectBtn.textContent = "시리얼 연결 해제";
+        connectBtn.classList.replace('bg-indigo-600', 'bg-rose-600');
+        exportCsvBtn.disabled = false;
+        exportCsvBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+      } else {
+        statusBadge.className = "flex items-center gap-2 bg-rose-500/10 border border-rose-500/30 text-rose-400 px-3 py-1.5 rounded-lg text-xs font-semibold";
+        statusText.textContent = "시리얼 연결 해제됨";
+        connectBtn.textContent = "시리얼 모니터 연결";
+        connectBtn.classList.replace('bg-rose-600', 'bg-indigo-600');
+      }
+    }
+
+    async function readSerialData() {
+      const textDecoder = new TextDecoderStream();
+      port.readable.pipeTo(textDecoder.writable);
+      reader = textDecoder.readable.getReader();
+
+      let buffer = '';
+      try {
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+
+          buffer += value;
+          const lines = buffer.split('\n');
+          buffer = lines.pop();
+
+          for (const line of lines) {
+            const clean = line.trim();
+            if (clean.length > 0) processIncomingLine(clean);
+          }
         }
+      } catch (e) {
+      } finally {
+        reader.releaseLock();
+      }
+    }
 
-        // Initialize VU Meter Blocks
-        function initVuMeter() {
-            const container = document.getElementById('vuSegments');
-            container.innerHTML = '';
-            for (let i = 0; i < 12; i++) {
-                const seg = document.createElement('div');
-                seg.className = 'rounded-sm bg-slate-800 transition-colors duration-150';
-                seg.id = `vuSeg_${i}`;
-                container.appendChild(seg);
-            }
+    function processIncomingLine(line) {
+      const timeStr = new Date().toLocaleTimeString();
+      appendDataLog(timeStr, line);
+      serialLogsHistory.push({ time: timeStr, raw: line });
+
+      const parsed = parseLine(line);
+      if (Object.keys(parsed).length > 0) updateDashboard(parsed, timeStr);
+    }
+
+    function parseLine(line) {
+      try { const json = JSON.parse(line); if (typeof json === 'object') return json; } catch(e){}
+      if (line.includes(':')) {
+        const obj = {};
+        line.split(',').forEach(p => {
+          const [k, v] = p.split(':').map(s => s.trim());
+          if (k && !isNaN(parseFloat(v))) obj[k] = parseFloat(v);
+        });
+        if (Object.keys(obj).length > 0) return obj;
+      }
+      const num = parseFloat(line);
+      return !isNaN(num) ? { '값': num } : {};
+    }
+
+    function updateDashboard(data, timeStr) {
+      if (cardsGrid.querySelector('.col-span-full')) cardsGrid.innerHTML = '';
+
+      if (realtimeChart.data.labels.length >= maxDataPoints) realtimeChart.data.labels.shift();
+      realtimeChart.data.labels.push(timeStr);
+
+      for (const [key, value] of Object.entries(data)) {
+        let card = document.getElementById(`card-${key}`);
+        if (!card) {
+          card = document.createElement('div');
+          card.id = `card-${key}`;
+          card.className = "bg-slate-800 border border-slate-700/80 rounded-xl p-4 shadow-lg";
+          card.innerHTML = `<div class="text-xs text-slate-400 uppercase">${key}</div><div id="val-${key}" class="text-3xl font-bold text-white mt-1">0</div>`;
+          cardsGrid.appendChild(card);
         }
+        document.getElementById(`val-${key}`).textContent = value;
 
-        // Initialize Live Chart.js
-        function initChart() {
-            const ctx = document.getElementById('sensorChart').getContext('2d');
-            
-            state.chartInstance = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: [],
-                    datasets: [
-                        {
-                            label: '온도 (°C)',
-                            data: [],
-                            borderColor: '#f43f5e',
-                            backgroundColor: 'rgba(244, 63, 94, 0.1)',
-                            borderWidth: 2,
-                            tension: 0.3,
-                            fill: true,
-                            yAxisID: 'yTemp'
-                        },
-                        {
-                            label: '광도 (0-255)',
-                            data: [],
-                            borderColor: '#fbbf24',
-                            backgroundColor: 'rgba(251, 191, 36, 0.05)',
-                            borderWidth: 2,
-                            tension: 0.3,
-                            fill: false,
-                            yAxisID: 'yScale'
-                        },
-                        {
-                            label: '음량 (0-255)',
-                            data: [],
-                            borderColor: '#10b981',
-                            backgroundColor: 'rgba(16, 185, 129, 0.05)',
-                            borderWidth: 2,
-                            tension: 0.3,
-                            fill: false,
-                            yAxisID: 'yScale'
-                        }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    animation: false,
-                    interaction: {
-                        mode: 'index',
-                        intersect: false,
-                    },
-                    scales: {
-                        x: {
-                            grid: { color: 'rgba(51, 65, 85, 0.3)' },
-                            ticks: { color: '#94a3b8', font: { size: 10 } }
-                        },
-                        yTemp: {
-                            type: 'linear',
-                            display: true,
-                            position: 'left',
-                            min: -10,
-                            max: 50,
-                            title: { display: true, text: '온도 (°C)', color: '#f43f5e', font: { size: 11 } },
-                            grid: { color: 'rgba(51, 65, 85, 0.3)' },
-                            ticks: { color: '#f43f5e' }
-                        },
-                        yScale: {
-                            type: 'linear',
-                            display: true,
-                            position: 'right',
-                            min: 0,
-                            max: 255,
-                            title: { display: true, text: '광도 / 음량 (0-255)', color: '#fbbf24', font: { size: 11 } },
-                            grid: { drawOnChartArea: false },
-                            ticks: { color: '#94a3b8' }
-                        }
-                    },
-                    plugins: {
-                        legend: { display: false }
-                    }
-                }
-            });
+        let dataset = realtimeChart.data.datasets.find(d => d.label === key);
+        if (!dataset) {
+          const color = chartColors[colorIndex++ % chartColors.length];
+          dataset = { label: key, data: [], borderColor: color, backgroundColor: color + '20', tension: 0.3, fill: true };
+          realtimeChart.data.datasets.push(dataset);
         }
-
-        /**
-         * Web Serial Connection Management
-         */
-        async function toggleConnect() {
-            if (state.demoMode) {
-                stopDemoMode();
-            }
-
-            if (state.connected) {
-                await disconnectSerial();
-            } else {
-                await connectSerial();
-            }
-        }
-
-        async function connectSerial() {
-            try {
-                // Request serial port from user prompt
-                state.port = await navigator.serial.requestPort();
-                await state.port.open({ baudRate: 115200 });
-
-                state.connected = true;
-                state.keepReading = true;
-
-                updateConnectionUI(true, '유선 시리얼 연결됨', 'bg-emerald-500');
-                logConsole('[System] micro:bit v2와 115200 Baud로 연결되었습니다.', 'emerald');
-
-                readSerialLoop();
-
-            } catch (err) {
-                console.error("Serial Connection Error:", err);
-
-                // Handle Permissions Policy or SecurityError specifically for iframe preview
-                if (err.name === 'SecurityError' || (err.message && err.message.includes('permissions policy'))) {
-                    logConsole('[Error] 미리보기 보안 정책으로 Web Serial 접근이 금지되었습니다. (Permissions Policy)', 'rose');
-                    openModal('permissionModal');
-                } else if (err.name === 'NotFoundError') {
-                    logConsole('[System] 시리얼 장치 선택이 취소되었습니다.', 'amber');
-                } else {
-                    logConsole(`[Error] 연결 실패: ${err.message || err}`, 'rose');
-                }
-            }
-        }
-
-        async function disconnectSerial() {
-            state.keepReading = false;
-
-            if (state.reader) {
-                try {
-                    await state.reader.cancel();
-                } catch (e) {}
-            }
-
-            if (state.port) {
-                try {
-                    await state.port.close();
-                } catch (e) {}
-            }
-
-            state.connected = false;
-            state.port = null;
-            state.reader = null;
-
-            updateConnectionUI(false, '연결 해제됨', 'bg-slate-500');
-            logConsole('[System] 시리얼 연결이 종료되었습니다.', 'amber');
-        }
-
-        async function readSerialLoop() {
-            const textDecoder = new TextDecoderStream();
-            const readableStreamClosed = state.port.readable.pipeTo(textDecoder.writable);
-            state.reader = textDecoder.readable.getReader();
-
-            let lineBuffer = '';
-
-            try {
-                while (state.keepReading) {
-                    const { value, done } = await state.reader.read();
-                    if (done) {
-                        break;
-                    }
-                    if (value) {
-                        lineBuffer += value;
-                        const lines = lineBuffer.split(/\r?\n/);
-                        // Process complete lines, keep the last incomplete chunk
-                        lineBuffer = lines.pop();
-
-                        for (const line of lines) {
-                            if (line.trim().length > 0) {
-                                processSerialLine(line.trim());
-                            }
-                        }
-                    }
-                }
-            } catch (err) {
-                logConsole(`[System Read Error] ${err.message}`, 'rose');
-            } finally {
-                state.reader.releaseLock();
-            }
-        }
-
-        /**
-         * Flexible Serial Data Parser
-         * Supports:
-         * 1. Key-Value: "T:25,L:150,S:60" or "TEMP:25, LIGHT:150, SOUND:60"
-         * 2. JSON: {"temp":25, "light":150, "sound":60}
-         * 3. CSV: "25,150,60"
-         */
-        function processSerialLine(rawLine) {
-            logConsole(`> ${rawLine}`, 'slate');
-
-            let parsedTemp = null;
-            let parsedLight = null;
-            let parsedSound = null;
-
-            // 1. Try JSON Parsing
-            if (rawLine.startsWith('{') && rawLine.endsWith('}')) {
-                try {
-                    const data = JSON.parse(rawLine);
-                    parsedTemp = data.temp ?? data.T ?? data.temperature;
-                    parsedLight = data.light ?? data.L ?? data.lightLevel;
-                    parsedSound = data.sound ?? data.S ?? data.soundLevel;
-                } catch (e) {}
-            }
-
-            // 2. Try Key-Value Parsing (T:25,L:120,S:50)
-            if (parsedTemp === null && rawLine.includes(':')) {
-                const parts = rawLine.split(',');
-                parts.forEach(part => {
-                    const [key, val] = part.split(':').map(s => s.trim().toUpperCase());
-                    const numVal = parseFloat(val);
-                    if (!isNaN(numVal)) {
-                        if (key === 'T' || key === 'TEMP' || key === 'TEMPERATURE') parsedTemp = numVal;
-                        if (key === 'L' || key === 'LIGHT' || key === 'BRIGHTNESS') parsedLight = numVal;
-                        if (key === 'S' || key === 'SOUND' || key === 'VOLUME' || key === 'MIC') parsedSound = numVal;
-                    }
-                });
-            }
-
-            // 3. Try CSV Parsing ("25,150,60")
-            if (parsedTemp === null && rawLine.includes(',')) {
-                const parts = rawLine.split(',').map(p => parseFloat(p.trim()));
-                if (parts.length >= 3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) {
-                    parsedTemp = parts[0];
-                    parsedLight = parts[1];
-                    parsedSound = parts[2];
-                }
-            }
-
-            // Apply parsed values if valid
-            if (parsedTemp !== null || parsedLight !== null || parsedSound !== null) {
-                updateSensorData({
-                    temp: parsedTemp ?? state.temp,
-                    light: parsedLight ?? state.light,
-                    sound: parsedSound ?? state.sound
-                });
-            }
-        }
-
-        /**
-         * Demo / Simulation Mode
-         */
-        let demoInterval = null;
-
-        function toggleDemoMode() {
-            if (state.connected) {
-                disconnectSerial();
-            }
-
-            if (state.demoMode) {
-                stopDemoMode();
-            } else {
-                startDemoMode();
-            }
-        }
-
-        function startDemoMode() {
-            state.demoMode = true;
-            el.btnToggleDemo.classList.replace('bg-slate-800', 'bg-amber-600');
-            el.demoBtnText.innerText = '시뮬레이션 중지';
-
-            updateConnectionUI(true, '시뮬레이션 가동중', 'bg-amber-400');
-            logConsole('[Demo] 가상 micro:bit 센서 데이터 생성을 시작합니다.', 'amber');
-
-            // Initial baseline values
-            let simTemp = 24.5;
-            let simLight = 140;
-            let simSound = 45;
-
-            demoInterval = setInterval(() => {
-                // Random Walk logic
-                simTemp += (Math.random() - 0.48) * 0.4;
-                simTemp = Math.min(Math.max(simTemp, 18), 36);
-
-                simLight += (Math.random() - 0.5) * 15;
-                simLight = Math.min(Math.max(simLight, 10), 250);
-
-                // Sound fluctuates quickly with occasional peaks
-                simSound = Math.floor(Math.random() * 60 + 20);
-                if (Math.random() < 0.1) {
-                    simSound = Math.floor(Math.random() * 120 + 120); // Spikes
-                }
-
-                const line = `T:${simTemp.toFixed(1)},L:${Math.round(simLight)},S:${simSound}`;
-                processSerialLine(line);
-            }, 600);
-        }
-
-        function stopDemoMode() {
-            state.demoMode = false;
-            if (demoInterval) clearInterval(demoInterval);
-            demoInterval = null;
-
-            el.btnToggleDemo.classList.replace('bg-amber-600', 'bg-slate-800');
-            el.demoBtnText.innerText = '시뮬레이션 시작';
-
-            updateConnectionUI(false, '연결 대기중', 'bg-slate-500');
-            logConsole('[Demo] 시뮬레이션 모드가 종료되었습니다.', 'slate');
-        }
-
-        /**
-         * Core Sensor State & UI Update Engine
-         */
-        function updateSensorData({ temp, light, sound }) {
-            const now = new Date();
-            const timeStr = now.toLocaleTimeString('ko-KR');
-
-            state.temp = Math.round(temp * 10) / 10;
-            state.light = Math.round(light);
-            state.sound = Math.round(sound);
-
-            // Min/Max Calculations
-            if (state.minTemp === null || state.temp < state.minTemp) state.minTemp = state.temp;
-            if (state.maxTemp === null || state.temp > state.maxTemp) state.maxTemp = state.temp;
-            if (state.sound > state.soundPeak) state.soundPeak = state.sound;
-
-            // Push to History Log
-            state.history.push({
-                timestamp: now.toISOString(),
-                timeStr: timeStr,
-                temp: state.temp,
-                light: state.light,
-                sound: state.sound
-            });
-            if (state.history.length > 500) state.history.shift();
-
-            // 1. Update Temperature UI
-            el.valTemp.innerText = state.temp.toFixed(1);
-            el.valTempMin.innerText = `${state.minTemp.toFixed(1)} °C`;
-            el.valTempMax.innerText = `${state.maxTemp.toFixed(1)} °C`;
-
-            // Temperature Bar % (-10 to 50 Range)
-            const tempPercent = Math.min(Math.max(((state.temp + 10) / 60) * 100, 0), 100);
-            el.barTemp.style.width = `${tempPercent}%`;
-
-            if (state.temp < 18) {
-                el.tempStatusBadge.innerText = '차가움';
-                el.tempStatusBadge.className = 'text-[10px] px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 font-medium';
-            } else if (state.temp <= 28) {
-                el.tempStatusBadge.innerText = '쾌적함';
-                el.tempStatusBadge.className = 'text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-medium';
-            } else {
-                el.tempStatusBadge.innerText = '무더움';
-                el.tempStatusBadge.className = 'text-[10px] px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 font-medium';
-            }
-
-            // 2. Update Light Level UI
-            el.valLight.innerText = state.light;
-            const lightPct = Math.round((state.light / 255) * 100);
-            el.valLightPercent.innerText = `${lightPct} %`;
-            el.barLight.style.width = `${lightPct}%`;
-
-            if (state.light < 50) {
-                el.valLightState.innerText = '어두움 (밤)';
-                el.lightStatusText.innerText = '야간/어두움';
-                el.lightIcon.className = 'fa-solid fa-moon text-indigo-400';
-            } else if (state.light < 180) {
-                el.valLightState.innerText = '보통 (실내)';
-                el.lightStatusText.innerText = '실내 조명';
-                el.lightIcon.className = 'fa-solid fa-cloud-sun text-amber-300';
-            } else {
-                el.valLightState.innerText = '매우 밝음 (낮)';
-                el.lightStatusText.innerText = '직사광선/밝음';
-                el.lightIcon.className = 'fa-solid fa-sun text-amber-400';
-            }
-
-            // 3. Update Sound Level UI
-            el.valSound.innerText = state.sound;
-            el.valSoundPeak.innerText = state.soundPeak;
-            const soundPct = Math.round((state.sound / 255) * 100);
-            el.valVuPercent.innerText = `${soundPct}%`;
-
-            if (state.sound > 120) {
-                el.soundStatusBadge.innerText = '시끄러움';
-                el.soundStatusBadge.className = 'text-[10px] px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 font-medium';
-            } else {
-                el.soundStatusBadge.innerText = '조용함';
-                el.soundStatusBadge.className = 'text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-medium';
-            }
-
-            // Update VU Segment Blocks
-            const activeSegments = Math.round((state.sound / 255) * 12);
-            for (let i = 0; i < 12; i++) {
-                const seg = document.getElementById(`vuSeg_${i}`);
-                if (i < activeSegments) {
-                    if (i < 7) seg.className = 'rounded-sm bg-emerald-500 shadow-sm shadow-emerald-500/50';
-                    else if (i < 10) seg.className = 'rounded-sm bg-amber-400 shadow-sm shadow-amber-400/50';
-                    else seg.className = 'rounded-sm bg-rose-500 shadow-sm shadow-rose-500/50';
-                } else {
-                    seg.className = 'rounded-sm bg-slate-800';
-                }
-            }
-
-            // Animate Wave Equalizer
-            const waveBars = document.querySelectorAll('#waveVisualizer > div');
-            waveBars.forEach(bar => {
-                const randomH = Math.min(Math.max((state.sound / 255) * 28 + Math.random() * 8, 4), 28);
-                bar.style.height = `${randomH}px`;
-            });
-
-            // 4. Chart Update
-            if (!state.chartPaused && state.chartInstance) {
-                const labels = state.chartInstance.data.labels;
-                labels.push(timeStr);
-                state.chartInstance.data.datasets[0].data.push(state.temp);
-                state.chartInstance.data.datasets[1].data.push(state.light);
-                state.chartInstance.data.datasets[2].data.push(state.sound);
-
-                // Max Data Points Cap (Keep last 30 readings)
-                if (labels.length > 30) {
-                    labels.shift();
-                    state.chartInstance.data.datasets.forEach(ds => ds.data.shift());
-                }
-                state.chartInstance.update('none');
-            }
-
-            // 5. Check Alert Thresholds
-            checkThresholdAlerts();
-        }
-
-        /**
-         * Alert Notification System
-         */
-        function updateLimits() {
-            state.limits.temp = parseFloat(document.getElementById('inputLimitTemp').value);
-            state.limits.light = parseFloat(document.getElementById('inputLimitLight').value);
-            state.limits.sound = parseFloat(document.getElementById('inputLimitSound').value);
-
-            document.getElementById('lblLimitTemp').innerText = `${state.limits.temp}°C`;
-            document.getElementById('lblLimitLight').innerText = `${state.limits.light}`;
-            document.getElementById('lblLimitSound').innerText = `${state.limits.sound}`;
-            document.getElementById('valSoundLimit').innerText = `> ${state.limits.sound} 기준`;
-        }
-
-        function checkThresholdAlerts() {
-            const now = Date.now();
-            if (now - state.lastAlertTime < 4000) return; // Cooldown 4s
-
-            let alertMsg = null;
-            if (state.temp >= state.limits.temp) {
-                alertMsg = `🔥 고온 경보! 현재 온도 ${state.temp}°C (기준 ${state.limits.temp}°C 초과)`;
-            } else if (state.light >= state.limits.light) {
-                alertMsg = `☀️ 강한 빛 경보! 현재 광도 ${state.light} (기준 ${state.limits.light} 초과)`;
-            } else if (state.sound >= state.limits.sound) {
-                alertMsg = `🔊 소음 경보! 현재 음량 ${state.sound} (기준 ${state.limits.sound} 초과)`;
-            }
-
-            if (alertMsg) {
-                state.lastAlertTime = now;
-                showToast(alertMsg);
-                playAlertBeep();
-            }
-        }
-
-        function showToast(message) {
-            const container = document.getElementById('toastContainer');
-            const toast = document.createElement('div');
-            toast.className = 'bg-rose-600/90 text-white text-xs font-semibold px-4 py-3 rounded-xl shadow-xl backdrop-blur flex items-center justify-between border border-rose-400 pointer-events-auto transform transition-all duration-300 translate-x-10 opacity-0';
-            toast.innerHTML = `
-                <div class="flex items-center gap-2">
-                    <i class="fa-solid fa-triangle-exclamation text-base"></i>
-                    <span>${message}</span>
-                </div>
-            `;
-            container.appendChild(toast);
-
-            setTimeout(() => {
-                toast.classList.remove('translate-x-10', 'opacity-0');
-            }, 50);
-
-            setTimeout(() => {
-                toast.classList.add('opacity-0', 'translate-x-10');
-                setTimeout(() => toast.remove(), 300);
-            }, 3500);
-        }
-
-        function playAlertBeep() {
-            if (!document.getElementById('chkAudioAlert').checked) return;
-            try {
-                const ctx = new (window.AudioContext || window.webkitAudioContext)();
-                const osc = ctx.createOscillator();
-                const gain = ctx.createGain();
-                osc.type = 'sine';
-                osc.frequency.value = 880; // A5 tone
-                gain.gain.value = 0.1;
-                osc.connect(gain);
-                gain.connect(ctx.destination);
-                osc.start();
-                osc.stop(ctx.currentTime + 0.2);
-            } catch (e) {}
-        }
-
-        /**
-         * Console Log & UI Helpers
-         */
-        function logConsole(msg, color = 'slate') {
-            const colorMap = {
-                emerald: 'text-emerald-400',
-                rose: 'text-rose-400',
-                amber: 'text-amber-400',
-                slate: 'text-slate-400'
-            };
-            const div = document.createElement('div');
-            div.className = colorMap[color] || 'text-slate-300';
-            div.innerText = msg;
-            el.consoleLog.appendChild(div);
-
-            if (el.chkAutoScroll.checked) {
-                el.consoleLog.scrollTop = el.consoleLog.scrollHeight;
-            }
-        }
-
-        function clearLogs() {
-            el.consoleLog.innerHTML = '<div class="text-slate-600">[System] 콘솔 로그가 초기화되었습니다.</div>';
-        }
-
-        function updateConnectionUI(isConnected, statusText, dotColorClass) {
-            if (isConnected) {
-                el.connectBtnText.innerText = '연결 해제';
-                el.btnConnect.classList.replace('bg-indigo-600', 'bg-rose-600');
-                el.btnConnect.classList.replace('hover:bg-indigo-500', 'hover:bg-rose-500');
-            } else {
-                el.connectBtnText.innerText = '마이크로비트 연결';
-                el.btnConnect.classList.replace('bg-rose-600', 'bg-indigo-600');
-                el.btnConnect.classList.replace('hover:bg-rose-500', 'hover:bg-indigo-500');
-            }
-
-            el.statusText.innerText = statusText;
-            el.statusDot.className = `w-2 h-2 rounded-full inline-block ${dotColorClass}`;
-        }
-
-        // Chart Controls
-        function toggleChartPause() {
-            state.chartPaused = !state.chartPaused;
-            const btn = document.getElementById('btnPauseChart');
-            if (state.chartPaused) {
-                btn.innerHTML = '<i class="fa-solid fa-play mr-1"></i>재개';
-                btn.classList.add('bg-amber-600', 'text-white');
-            } else {
-                btn.innerHTML = '<i class="fa-solid fa-pause mr-1"></i>일시정지';
-                btn.classList.remove('bg-amber-600', 'text-white');
-            }
-        }
-
-        function toggleDataset(index) {
-            const meta = state.chartInstance.getDatasetMeta(index);
-            meta.hidden = meta.hidden === null ? !state.chartInstance.data.datasets[index].hidden : !meta.hidden;
-            state.chartInstance.update();
-        }
-
-        function resetChartData() {
-            state.chartInstance.data.labels = [];
-            state.chartInstance.data.datasets.forEach(ds => ds.data = []);
-            state.chartInstance.update();
-            state.minTemp = null;
-            state.maxTemp = null;
-            state.soundPeak = 0;
-            logConsole('[System] 그래프 및 통계 데이터가 초기화되었습니다.', 'slate');
-        }
-
-        // Export Captured Log to CSV File
-        function exportCSV() {
-            if (state.history.length === 0) {
-                showToast('수신된 데이터가 없습니다.');
-                return;
-            }
-
-            let csvContent = 'data:text/csv;charset=utf-8,ISO_Timestamp,Time,Temperature_C,Light_Level,Sound_Level\n';
-            state.history.forEach(row => {
-                csvContent += `${row.timestamp},${row.timeStr},${row.temp},${row.light},${row.sound}\n`;
-            });
-
-            const encodedUri = encodeURI(csvContent);
-            const link = document.createElement('a');
-            link.setAttribute('href', encodedUri);
-            link.setAttribute('download', `microbit_sensor_data_${Date.now()}.csv`);
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-
-            logConsole(`[System] ${state.history.length}개의 센서 데이터 행이 CSV 파일로 저장되었습니다.`, 'emerald');
-        }
-
-        // Modal Helpers
-        function openModal(id) {
-            document.getElementById(id).classList.remove('hidden');
-        }
-        function closeModal(id) {
-            document.getElementById(id).classList.add('hidden');
-        }
-        function switchTab(showId, hideId) {
-            document.getElementById(showId).classList.remove('hidden');
-            document.getElementById(hideId).classList.add('hidden');
-            if (showId === 'tab-python') {
-                document.getElementById('btnTabPython').className = 'pb-2 text-xs font-bold border-b-2 border-indigo-500 text-indigo-400';
-                document.getElementById('btnTabJs').className = 'pb-2 text-xs font-bold border-b-2 border-transparent text-slate-400 hover:text-slate-200';
-            } else {
-                document.getElementById('btnTabJs').className = 'pb-2 text-xs font-bold border-b-2 border-indigo-500 text-indigo-400';
-                document.getElementById('btnTabPython').className = 'pb-2 text-xs font-bold border-b-2 border-transparent text-slate-400 hover:text-slate-200';
-            }
-        }
-
-        function copyCode(elementId) {
-            const text = document.getElementById(elementId).value;
-            const textarea = document.createElement('textarea');
-            textarea.value = text;
-            document.body.appendChild(textarea);
-            textarea.select();
-            document.execCommand('copy');
-            document.body.removeChild(textarea);
-            showToast('📋 코드가 클립보드에 복사되었습니다!');
-        }
-    </script>
+        if (dataset.data.length >= maxDataPoints) dataset.data.shift();
+        dataset.data.push(value);
+      }
+      realtimeChart.update();
+    }
+
+    function appendDataLog(time, text) {
+      const el = document.createElement('div');
+      el.innerHTML = `<span class="text-slate-500">[${time}]</span> ${text}`;
+      serialLog.appendChild(el);
+      serialLog.scrollTop = serialLog.scrollHeight;
+    }
+
+    function appendSystemLog(text, isError = false) {
+      const el = document.createElement('div');
+      el.className = isError ? 'text-rose-400 font-bold' : 'text-slate-400 italic';
+      el.textContent = `[시스템] ${text}`;
+      serialLog.appendChild(el);
+      serialLog.scrollTop = serialLog.scrollHeight;
+    }
+
+    function exportToCSV() {
+      if (!serialLogsHistory.length) return alert('저장할 데이터가 없습니다.');
+      let csv = "Timestamp,Data\n" + serialLogsHistory.map(r => `"${r.time}","${r.raw}"`).join("\n");
+      const a = document.createElement('a');
+      a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+      a.download = `microbit_data_${Date.now()}.csv`;
+      a.click();
+    }
+  </script>
 </body>
 </html>
