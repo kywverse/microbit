@@ -1,423 +1,1469 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>마이크로비트 원클릭 펌웨어 업로더 & 대시보드</title>
-  <!-- Chart.js -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <!-- DAPjs (WebUSB 마이크로비트 HEX 업로더) -->
-  <script src="https://cdn.jsdelivr.net/npm/dapjs@0.1.3/dist/dap.umd.min.js"></script>
-  <!-- Tailwind CSS -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <style>
-    body { font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-    .custom-scrollbar::-webkit-scrollbar { width: 6px; }
-    .custom-scrollbar::-webkit-scrollbar-track { background: #1f2937; }
-    .custom-scrollbar::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 3px; }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>micro:bit Web Serial — 데이터 시각화</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.1/chart.min.js"></script>
+<style>
+  :root {
+    --bg:        #0d1117;
+    --panel:     #161b22;
+    --panel-2:   #1c2333;
+    --border:    #30363d;
+    --text:      #e6edf3;
+    --text-dim:  #8b949e;
+    --accent:    #fbb82e;
+    --accent-2:  #ff8f10;
+    --green:     #3fb950;
+    --red:       #f85149;
+    --blue:      #58a6ff;
+    --radius:    8px;
+    --font:      'Segoe UI', system-ui, -apple-system, sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ── 헤더 ───────────────────────────────── */
+  .app-header {
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 24px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 700;
+    font-size: 1.05rem;
+    letter-spacing: -0.01em;
+    white-space: nowrap;
+  }
+  .logo-mark {
+    width: 32px; height: 32px;
+    background: var(--accent);
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 900; color: #0d1117; font-size: 0.75rem;
+    flex-shrink: 0;
+  }
+  .badge {
+    font-size: 0.72rem;
+    padding: 3px 8px;
+    border-radius: 100px;
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    white-space: nowrap;
+  }
+
+  /* ── 레이아웃 ───────────────────────────── */
+  .layout {
+    display: grid;
+    grid-template-columns: 340px 1fr;
+    gap: 0;
+    height: calc(100vh - 57px);
+  }
+  @media (max-width: 860px) {
+    .layout { grid-template-columns: 1fr; height: auto; }
+  }
+
+  /* ── 사이드 패널 ─────────────────────────── */
+  .side-panel {
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    padding: 16px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  @media (max-width: 860px) {
+    .side-panel { border-right: none; border-bottom: 1px solid var(--border); }
+  }
+
+  .section-label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-dim);
+    margin-bottom: 6px;
+    font-weight: 600;
+  }
+
+  .card {
+    background: var(--panel-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px 14px;
+  }
+  .card-title {
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  /* ── 버튼 ────────────────────────────────── */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--panel-2);
+    color: var(--text);
+    font-size: 0.85rem;
+    font-family: var(--font);
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+    user-select: none;
+  }
+  .btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+  .btn-primary {
+    background: var(--accent);
+    color: #0d1117;
+    border-color: var(--accent);
+    font-weight: 600;
+  }
+  .btn-primary:hover:not(:disabled) {
+    background: var(--accent-2);
+    border-color: var(--accent-2);
+    color: #0d1117;
+  }
+  .btn-sm { padding: 5px 10px; font-size: 0.78rem; }
+  .btn-danger { border-color: var(--red); color: var(--red); }
+  .btn-danger:hover:not(:disabled) { background: var(--red); color: #fff; }
+  .btn-block { width: 100%; }
+
+  /* ── 상태 표시 ───────────────────────────── */
+  .status-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 0;
+  }
+  .status-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    transition: background 0.3s;
+  }
+  .status-dot.idle    { background: var(--text-dim); }
+  .status-dot.connecting { background: #f0883e; animation: pulse 0.8s infinite; }
+  .status-dot.connected  { background: var(--green); }
+  .status-dot.error      { background: var(--red); }
+  .status-dot.flashing   { background: var(--blue); animation: pulse 0.6s infinite; }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+  .status-text { font-size: 0.82rem; color: var(--text-dim); }
+
+  .input-group { margin-bottom: 8px; }
+  .input-group label {
+    display: block;
+    font-size: 0.78rem;
+    color: var(--text-dim);
+    margin-bottom: 4px;
+  }
+  .input-row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+  input[type="number"], input[type="text"], select {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text);
+    padding: 6px 8px;
+    font-size: 0.82rem;
+    font-family: var(--font);
+    width: 100%;
+  }
+  input[type="number"] { width: 90px; flex-shrink: 0; }
+  select { width: 100%; cursor: pointer; }
+
+  /* ── 업로드 영역 ─────────────────────────── */
+  .drop-zone {
+    border: 2px dashed var(--border);
+    border-radius: var(--radius);
+    padding: 20px 12px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+  }
+  .drop-zone:hover, .drop-zone.drag-over {
+    border-color: var(--accent);
+    background: rgba(251,184,46,0.05);
+  }
+  .drop-zone input[type="file"] {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+  }
+  .drop-icon { font-size: 1.6rem; margin-bottom: 6px; color: var(--text-dim); }
+  .drop-text { font-size: 0.82rem; color: var(--text-dim); }
+  .drop-text strong { color: var(--text); }
+
+  .file-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    background: var(--bg);
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    font-size: 0.78rem;
+    margin-top: 8px;
+  }
+  .file-info .fi-name { flex: 1; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .file-info .fi-size { color: var(--text-dim); }
+
+  /* ── 트랙 상태 ───────────────────────────── */
+  .track-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 8px;
+    border-radius: 100px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+  .track-badge.a { background: rgba(88,166,255,0.15); color: var(--blue); border: 1px solid rgba(88,166,255,0.3); }
+  .track-badge.b { background: rgba(251,184,46,0.15); color: var(--accent); border: 1px solid rgba(251,184,46,0.3); }
+  .track-badge.idle { background: rgba(139,148,158,0.15); color: var(--text-dim); border: 1px solid rgba(139,148,158,0.25); }
+
+  .guide-box {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px;
+    font-size: 0.78rem;
+    color: var(--text-dim);
+    line-height: 1.7;
+  }
+  .guide-box h4 {
+    color: var(--text);
+    font-size: 0.82rem;
+    margin-bottom: 6px;
+  }
+  .guide-box ol { padding-left: 18px; }
+  .guide-box ol li { margin-bottom: 4px; }
+  .guide-box .step-num {
+    display: inline-block;
+    width: 18px; height: 18px;
+    background: var(--accent);
+    color: #0d1117;
+    border-radius: 50%;
+    text-align: center;
+    font-size: 0.7rem;
+    font-weight: 700;
+    margin-right: 4px;
+    line-height: 18px;
+  }
+
+  /* ── 메인 패널 ───────────────────────────── */
+  .main-panel {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .chart-bar {
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    flex-shrink: 0;
+  }
+  .chart-bar .chart-title { font-weight: 600; font-size: 0.9rem; }
+  .chart-bar .chart-stat {
+    font-size: 0.75rem;
+    color: var(--text-dim);
+    padding: 3px 8px;
+    background: var(--panel-2);
+    border-radius: 100px;
+    border: 1px solid var(--border);
+  }
+  .chart-bar .chart-stat b { color: var(--text); font-weight: 600; }
+
+  .chart-wrap {
+    flex: 1;
+    position: relative;
+    min-height: 0;
+    padding: 8px 16px 16px;
+  }
+  .chart-wrap canvas { width: 100% !important; }
+
+  .bottom-bar {
+    background: var(--panel);
+    border-top: 1px solid var(--border);
+    padding: 8px 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    flex-shrink: 0;
+  }
+
+  /* ── 로그 ─────────────────────────────────── */
+  .log-box {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    max-height: 120px;
+    overflow-y: auto;
+    font-family: 'Cascadia Code', 'Fira Code', monospace;
+    font-size: 0.72rem;
+    color: var(--text-dim);
+    line-height: 1.6;
+    margin-top: 6px;
+  }
+  .log-box .log-line { opacity: 0.9; }
+  .log-box .log-line.err { color: var(--red); }
+  .log-box .log-line.ok { color: var(--green); }
+  .log-box .log-line.info { color: var(--blue); }
+
+  /* ── 브라우저 경고 ───────────────────────── */
+  .browser-warning {
+    background: rgba(248,81,73,0.1);
+    border: 1px solid rgba(248,81,73,0.35);
+    border-radius: var(--radius);
+    padding: 10px 12px;
+    font-size: 0.78rem;
+    color: var(--red);
+    display: none;
+  }
+  .browser-warning.show { display: block; }
+  .browser-warning.ok {
+    background: rgba(63,185,80,0.1);
+    border-color: rgba(63,185,80,0.3);
+    color: var(--green);
+  }
+
+  /* ── 스크롤바 ────────────────────────────── */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+
+  /* ── 토글 ─────────────────────────────────── */
+  .toggle-guide {
+    background: none;
+    border: none;
+    color: var(--accent);
+    font-size: 0.78rem;
+    cursor: pointer;
+    font-family: var(--font);
+    padding: 0;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .toggle-guide:hover { color: var(--accent-2); }
+
+  .hidden { display: none !important; }
+</style>
 </head>
-<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col">
+<body>
 
-  <!-- 헤더 -->
-  <header class="bg-slate-800 border-b border-slate-700 px-6 py-4 flex flex-wrap items-center justify-between gap-4">
-    <div class="flex items-center gap-3">
-      <div class="w-10 h-10 bg-indigo-600 rounded-lg flex items-center justify-center font-bold text-xl shadow-lg text-white">
-        µb
+<!-- ═══════════════════ 헤더 ═══════════════════ -->
+<header class="app-header">
+  <div class="logo">
+    <div class="logo-mark">µ</div>
+    <span>micro:bit Web Serial</span>
+  </div>
+  <span class="badge">Web Serial + Web USB</span>
+  <span class="badge" id="browserBadge">브라우저 확인 중…</span>
+</header>
+
+<!-- ═══════════════════ 레이아웃 ═══════════════ -->
+<div class="layout">
+
+  <!-- ── 사이드 패널 ─────────────────────── -->
+  <aside class="side-panel">
+
+    <!-- 브라우저 호환 경고 -->
+    <div class="browser-warning" id="browserWarning"></div>
+
+    <!-- 연결 카드 -->
+    <div class="card">
+      <div class="section-label">연결</div>
+      <div class="card-title">🔌 시리얼 연결</div>
+
+      <div class="status-row">
+        <div class="status-dot idle" id="statusDot"></div>
+        <span class="status-text" id="statusText">대기 중</span>
       </div>
-      <div>
-        <h1 class="text-xl font-bold tracking-wide text-white">마이크로비트 원클릭 웹 대시보드</h1>
-        <p class="text-xs text-slate-400">깃허브 `sensor.hex` 자동 다운로드 및 WebUSB 펌웨어 업로드</p>
+
+      <div class="input-group">
+        <label>보레이트 (bps)</label>
+        <div class="input-row">
+          <input type="number" id="baudInput" value="115200" min="1200" max="921600" step="1">
+          <button class="btn btn-sm" id="baudApplyBtn" title="적용할 보레이트로 포트 열기">적용</button>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:6px;margin-top:4px;">
+        <button class="btn btn-primary btn-block" id="connectBtn">🔗 연결</button>
+        <button class="btn btn-danger" id="disconnectBtn" disabled>✕ 끊기</button>
+      </div>
+
+      <div id="portInfo" class="hidden" style="margin-top:8px;padding:6px 8px;background:var(--bg);border-radius:4px;font-size:0.75rem;color:var(--text-dim);">
+        포트: <span id="portName">—</span><br>
+        보레이트: <span id="portBaud">—</span>
+      </div>
+
+      <div class="log-box" id="logBox">
+        <div class="log-line info">앱이 준비되었습니다. Chrome/Edge에서 실행하세요.</div>
       </div>
     </div>
 
-    <!-- 연결 제어판 -->
-    <div class="flex flex-wrap items-center gap-3">
-      <div class="flex items-center gap-2 bg-slate-900/80 border border-slate-700 rounded-lg px-3 py-1.5">
-        <label for="baudRate" class="text-xs text-slate-400 font-medium">속도:</label>
-        <select id="baudRate" class="bg-transparent text-sm font-mono focus:outline-none text-indigo-400">
-          <option value="115200" selected>115200</option>
-          <option value="37400">37400</option>
-          <option value="9600">9600</option>
-        </select>
+    <!-- hex 업로드 카드 -->
+    <div class="card">
+      <div class="section-label">hex 업로드</div>
+      <div class="card-title">📦 프로그램 파일</div>
+
+      <!-- 트랙 상태 배지 -->
+      <div id="trackBadge" class="track-badge idle">
+        <span>⏳</span> 트랙 대기 중
       </div>
 
-      <div id="statusBadge" class="flex items-center gap-2 bg-rose-500/10 border border-rose-500/30 text-rose-400 px-3 py-1.5 rounded-lg text-xs font-semibold">
-        <span class="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span>
-        <span id="statusText">시리얼 연결 해제됨</span>
+      <!-- 드롭 영역 -->
+      <div class="drop-zone" id="dropZone">
+        <input type="file" id="hexFileInput" accept=".hex">
+        <div class="drop-icon">📁</div>
+        <div class="drop-text"><strong>.hex 파일 선택</strong><br>또는 여기로 드래그</div>
       </div>
 
-      <button id="connectBtn" class="bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-sm px-4 py-2 rounded-lg transition shadow-md flex items-center gap-2">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-        시리얼 모니터 연결
-      </button>
+      <div id="fileInfo" class="hidden"></div>
 
-      <button id="exportCsvBtn" class="bg-slate-700 hover:bg-slate-600 text-slate-200 font-medium text-sm px-3 py-2 rounded-lg transition opacity-50 cursor-not-allowed" disabled>
-        CSV 저장
-      </button>
-    </div>
-  </header>
+      <div style="display:flex;gap:6px;margin-top:8px;">
+        <button class="btn btn-sm btn-block" id="downloadHexBtn" disabled>⬇ hex 다운로드</button>
+        <button class="btn btn-sm" id="retryWebUSBBtn" class="hidden">🔄 Web USB 재시도</button>
+      </div>
 
-  <main class="flex-1 p-6 space-y-6 max-w-[1600px] w-full mx-auto">
-
-    <!-- 1. 깃허브 sensor.hex 원클릭 업로드 섹션 -->
-    <section class="bg-gradient-to-r from-indigo-900/50 via-slate-800 to-slate-800 border border-indigo-500/40 rounded-xl p-5 shadow-xl">
-      <div class="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
-        <div>
-          <div class="flex items-center gap-2">
-            <span class="bg-indigo-500/20 text-indigo-300 text-xs px-2.5 py-0.5 rounded-full border border-indigo-500/30 font-mono">sensor.hex</span>
-            <h2 class="text-base font-bold text-white">마이크로비트에 펌웨어 원클릭 업로드</h2>
+      <!-- 트랙 B 안내 (숨김 기본) -->
+      <div id="trackBGuide" class="hidden" style="margin-top:10px;">
+        <button class="toggle-guide" id="toggleGuideBtn">▼ 수동 플래싱 안내 펼치기</button>
+        <div id="guideContent" class="hidden">
+          <div class="guide-box">
+            <h4>🔧 MICROBIT 드라이브에 직접 복사하는 방법</h4>
+            <ol>
+              <li><span class="step-num">1</span> USB 케이블로 micro:bit를 컴퓨터에 연결</li>
+              <li><span class="step-num">2</span> 파일 탐색기(Windows) 또는 Finder(macOS)에서 <strong>MICROBIT</strong> 드라이브 열기</li>
+              <li><span class="step-num">3</span> 아래 다운로드한 <code>.hex</code> 파일을 MICROBIT 드라이브에 <strong>드래그 & 드롭</strong> 또는 <strong>복사·붙여넣기</strong></li>
+              <li><span class="step-num">4</span> micro:bit LED가 빠르게 점멸하면 플래싱 진행 중 — 완료될 때까지 대기 (약 5~15초)</li>
+              <li><span class="step-num">5</span> 플래싱 완료 후 LED가 정상적으로 표시되면, 웹앱에서 <strong>시리얼 연결</strong>을 다시 시도</li>
+            </ol>
+            <p style="margin-top:8px;color:var(--text-dim);">
+              ※ Windows: MICROBIT 드라이브가 보이지 않으면 케이블 재연결 또는 다른 USB 포트 시도<br>
+              ※ macOS: 데스크톱 또는 Finder 사이드바에서 MICROBIT 마운트 확인<br>
+              ※ Linux: <code>/media/</code> 또는 <code>/mnt/</code> 아래 마운트 지점 확인
+            </p>
           </div>
-          <p class="text-xs text-slate-300 mt-1.5">
-            깃허브에 올라와 있는 <code class="text-amber-300 bg-slate-900 px-1.5 py-0.5 rounded font-mono">sensor.hex</code> 파일 또는 사용자 지정 내 컴퓨터 파일으로 마이크로비트를 바로 라이팅합니다.
-          </p>
-        </div>
-
-        <div class="flex flex-wrap items-center gap-3 w-full lg:w-auto">
-          <!-- 깃허브 sensor.hex 주입 버튼 (주 메인 버튼) -->
-          <button id="flashGithubHexBtn" class="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs px-4 py-2.5 rounded-lg transition shadow-lg flex items-center gap-2 border border-indigo-400/30">
-            <svg class="w-4 h-4 text-amber-300 animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
-            ⚡ sensor.hex 바로 업로드하기
-          </button>
-
-          <!-- 로컬 다른 파일 선택 (서브 버튼) -->
-          <input type="file" id="hexFileInput" accept=".hex" class="hidden">
-          <button id="selectHexBtn" class="bg-slate-700/80 hover:bg-slate-700 text-slate-300 text-xs px-3 py-2.5 rounded-lg border border-slate-600 transition flex items-center gap-1.5">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
-            <span id="fileNameDisplay">다른 HEX 선택</span>
-          </button>
         </div>
       </div>
+    </div>
 
-      <!-- 업로드 진행률 바 -->
-      <div id="progressContainer" class="hidden mt-4 pt-3 border-t border-slate-700/60 space-y-1.5">
-        <div class="flex justify-between text-xs text-slate-300">
-          <span id="progressStatus" class="font-medium">준비 중...</span>
-          <span id="progressPercent" class="font-mono font-bold text-emerald-400">0%</span>
-        </div>
-        <div class="w-full bg-slate-950 rounded-full h-3 overflow-hidden p-0.5 border border-slate-800">
-          <div id="progressBar" class="bg-emerald-500 h-full rounded-full transition-all duration-150" style="width: 0%"></div>
-        </div>
+    <!-- 데이터 내보내기 -->
+    <div class="card">
+      <div class="section-label">데이터</div>
+      <div class="card-title">📤 내보내기</div>
+      <div style="display:flex;flex-direction:column;gap:6px;">
+        <button class="btn btn-sm btn-block" id="exportCsvBtn" disabled>📄 CSV 다운로드</button>
+        <button class="btn btn-sm btn-block" id="exportJsonBtn" disabled>📋 JSON 다운로드</button>
+        <button class="btn btn-sm btn-block" id="clearDataBtn" disabled style="color:var(--red);border-color:var(--red);">🗑 데이터 초기화</button>
       </div>
-    </section>
-
-    <!-- 2. 실시간 센서 모니터링 카드 -->
-    <section>
-      <h2 class="text-xs font-bold tracking-wider text-slate-400 uppercase mb-3 flex items-center gap-1.5">
-        <svg class="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
-        실시간 수신 센서 데이터
-      </h2>
-      <div id="cardsGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div class="bg-slate-800/60 border border-slate-700/60 rounded-xl p-5 text-center py-6 col-span-full">
-          <p class="text-slate-400 text-sm">마이크로비트를 연결하면 실시간 데이터 카드가 여기에 생성됩니다.</p>
-        </div>
+      <div style="margin-top:8px;font-size:0.72rem;color:var(--text-dim);">
+        저장된 포인트: <span id="dataCount">0</span> · 버퍼: <span id="bufferStatus">—</span>
       </div>
-    </section>
+    </div>
 
-    <!-- 3. 실시간 차트 & 시리얼 콘솔 -->
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      <section class="lg:col-span-2 bg-slate-800/80 border border-slate-700 rounded-xl p-5 flex flex-col h-[420px]">
-        <h2 class="text-sm font-semibold text-slate-200 mb-3 flex items-center gap-2">
-          <svg class="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"/></svg>
-          실시간 시각화 그래프
-        </h2>
-        <div class="flex-1 w-full h-full min-h-0 relative">
-          <canvas id="realtimeChart"></canvas>
-        </div>
-      </section>
+  </aside>
 
-      <section class="bg-slate-800/80 border border-slate-700 rounded-xl p-5 flex flex-col h-[420px]">
-        <div class="flex items-center justify-between mb-3">
-          <h2 class="text-sm font-semibold text-slate-200 flex items-center gap-2">
-            <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 002-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-            시리얼 모니터
-          </h2>
-          <button id="clearLogBtn" class="text-xs text-slate-400 hover:text-slate-200 bg-slate-700 px-2 py-1 rounded">지우기</button>
-        </div>
-        <div id="serialLog" class="flex-1 bg-slate-950 rounded-lg p-3 font-mono text-xs text-emerald-400 overflow-y-auto custom-scrollbar space-y-1 select-text border border-slate-800">
-          <div class="text-slate-500 italic">[시스템] 상단의 'sensor.hex 바로 업로드하기' 또는 '시리얼 모니터 연결'을 클릭하세요.</div>
-        </div>
-      </section>
+  <!-- ── 메인 패널 ───────────────────────── -->
+  <main class="main-panel">
+
+    <!-- 차트 헤더 -->
+    <div class="chart-bar">
+      <span class="chart-title">📊 실시간 센서 데이터</span>
+      <span class="chart-stat">수신률 <b id="rxRate">0</b> 샘플/초</span>
+      <span class="chart-stat">현재값 <b id="currentVal">—</b></span>
+      <span class="chart-stat">시간 <b id="elapsedTime">00:00</b></span>
+    </div>
+
+    <!-- 차트 영역 -->
+    <div class="chart-wrap">
+      <canvas id="dataChart"></canvas>
+    </div>
+
+    <!-- 하단 바 -->
+    <div class="bottom-bar">
+      <button class="btn btn-sm" id="resetZoomBtn" disabled>🔍 줌 초기화</button>
+      <span style="flex:1;"></span>
+      <span style="font-size:0.72rem;color:var(--text-dim);">
+        ⚡ 데이터는 사용자 브라우저에만 저장됩니다. 서버로 전송되지 않습니다.
+      </span>
     </div>
 
   </main>
+</div>
 
-  <script>
-    // 상태 변수
-    let selectedHexBuffer = null;
-    let port = null;
-    let reader = null;
-    let isConnected = false;
-    let serialLogsHistory = [];
-    const maxDataPoints = 30;
+<!-- ═══════════════════ 자바스크립트 ═══════════ -->
+<script>
+(function () {
+  'use strict';
 
-    // DOM 요소 참조
-    const flashGithubHexBtn = document.getElementById('flashGithubHexBtn');
-    const selectHexBtn = document.getElementById('selectHexBtn');
-    const hexFileInput = document.getElementById('hexFileInput');
-    const fileNameDisplay = document.getElementById('fileNameDisplay');
-    const progressContainer = document.getElementById('progressContainer');
-    const progressBar = document.getElementById('progressBar');
-    const progressPercent = document.getElementById('progressPercent');
-    const progressStatus = document.getElementById('progressStatus');
+  // ───────────────────────────────────────────
+  //  상태
+  // ───────────────────────────────────────────
+  const STATE = {
+    serial: null,          // SerialPort 객체
+    reader: null,          // ReadableStreamReader
+    connected: false,
+    baudRate: 115200,
+    track: 'idle',         // 'idle' | 'A' | 'B' | 'A-failed'
+    hexFile: null,         // 업로드된 File 객체
+    hexFileName: null,
+    hexFileSize: null,
+    hexFileArrayBuffer: null,
+    dataPoints: [],        // { t, channels: { name: value, ... } }
+    startTime: null,
+    rxCount: 0,
+    rxRate: 0,
+    rxRateSamples: [],
+    chart: null,
+    parseMode: 'csv',      // 'csv' | 'json'
+    disconnectedIntentionally: false,
+    last reconnectAttempt: 0,
+    reconnectTimer: null,
+    maxDataPoints: 2000,
+    logLines: [],
+  };
 
-    const connectBtn = document.getElementById('connectBtn');
-    const exportCsvBtn = document.getElementById('exportCsvBtn');
-    const clearLogBtn = document.getElementById('clearLogBtn');
-    const statusBadge = document.getElementById('statusBadge');
-    const statusText = document.getElementById('statusText');
-    const serialLog = document.getElementById('serialLog');
-    const cardsGrid = document.getElementById('cardsGrid');
-    const baudRateSelect = document.getElementById('baudRate');
+  // ───────────────────────────────────────────
+  //  DOM 참조
+  // ───────────────────────────────────────────
+  const $ = id => document.getElementById(id);
+  const connectBtn        = $('connectBtn');
+  const disconnectBtn     = $('disconnectBtn');
+  const baudInput         = $('baudInput');
+  const baudApplyBtn      = $('baudApplyBtn');
+  const statusDot         = $('statusDot');
+  const statusText        = $('statusText');
+  const portInfo          = $('portInfo');
+  const portName          = $('portName');
+  const portBaud          = $('portBaud');
+  const dropZone          = $('dropZone');
+  const hexFileInput      = $('hexFileInput');
+  const fileInfo          = $('fileInfo');
+  const downloadHexBtn    = $('downloadHexBtn');
+  const retryWebUSBBtn    = $('retryWebUSBBtn');
+  const trackBadge        = $('trackBadge');
+  const trackBGuide       = $('trackBGuide');
+  const toggleGuideBtn    = $('toggleGuideBtn');
+  const guideContent      = $('guideContent');
+  const browserWarning    = $('browserWarning');
+  const browserBadge      = $('browserBadge');
+  const logBox            = $('logBox');
+  const exportCsvBtn      = $('exportCsvBtn');
+  const exportJsonBtn     = $('exportJsonBtn');
+  const clearDataBtn      = $('clearDataBtn');
+  const dataCount         = $('dataCount');
+  const bufferStatus      = $('bufferStatus');
+  const rxRateEl          = $('rxRate');
+  const currentValEl      = $('currentVal');
+  const elapsedTimeEl     = $('elapsedTime');
+  const resetZoomBtn      = $('resetZoomBtn');
+  const canvas            = $('dataChart');
 
-    // Chart.js 그래프 초기화
-    const ctx = document.getElementById('realtimeChart').getContext('2d');
-    const realtimeChart = new Chart(ctx, {
+  // ───────────────────────────────────────────
+  //  브라우저 호환성 체크
+  // ───────────────────────────────────────────
+  function checkBrowser() {
+    const chrome  = navigator.userAgent.match(/Chrome\/(\d+)/);
+    const edge    = navigator.userAgent.match(/Edg\/(\d+)/);
+    const firefox = navigator.userAgent.match(/Firefox\/(\d+)/);
+    const safari  = navigator.userAgent.match(/Safari\/(\d+)/) && !chrome;
+
+    const webSerial = 'serial' in navigator;
+    const webUsb    = 'usb' in navigator;
+
+    let msg = '';
+    let isSupported = false;
+
+    if (chrome || edge) {
+      if (webSerial) {
+        msg = '✅ Chrome/Edge — Web Serial 지원';
+        browserBadge.textContent = 'Chrome/Edge ✅
+Web Serial 지원';
+        browserBadge.style.color = 'var(--green)';
+        isSupported = true;
+      } else {
+        msg = '⚠️ Chrome/Edge이지만 Web Serial이 비활성화되어 있습니다. chrome://flags에서 "Experimental Web Platform features"를 확인하세요.';
+        browserBadge.textContent = 'Chrome/Edge ⚠ Web Serial 비활성';
+        browserBadge.style.color = '#f0883e';
+      }
+      if (!webUsb) {
+        msg += '\nℹ️ Web USB는 이 브라우저에서 지원하지 않습니다. 트랙 B는 항상 사용 가능합니다.';
+      }
+    } else if (firefox) {
+      msg = '❌ Firefox는 Web Serial / Web USB를 지원하지 않습니다.\n→ hex 다운로드와 수동 플래싱(안내)은 모든 브라우저에서 가능합니다.\n→ 데이터 시각화만 이용하시려면 계속 진행할 수 있습니다.';
+      browserBadge.textContent = 'Firefox ❌ 미지원';
+      browserBadge.style.color = 'var(--red)';
+    } else if (safari) {
+      msg = '❌ Safari는 Web Serial / Web USB를 지원하지 않습니다.\n→ hex 다운로드와 수동 플래싱(안내)은 모든 브라우저에서 가능합니다.';
+      browserBadge.textContent = 'Safari ❌ 미지원';
+      browserBadge.style.color = 'var(--red)';
+    } else {
+      msg = '⚠️ 이 브라우저에서는 Web Serial/USB를 지원하지 않을 수 있습니다. Chrome 또는 Edge 사용을 권장합니다.';
+      browserBadge.textContent = '알 수 없음 ⚠️';
+      browserBadge.style.color = '#f0883e';
+    }
+
+    browserWarning.textContent = msg.replace(/\n/g, '<br>');
+    if (isSupported) {
+      browserWarning.classList.add('ok');
+    } else {
+      browserWarning.classList.add('show');
+    }
+
+    // Cloudflare Workers 기반 GitHub Pages 등 일부 HTTPS 환경 여부 확인
+    log(`정보`, msg.split('\n')[0]);
+
+    return { webSerial, webUsb, isSupported };
+  }
+
+  // ───────────────────────────────────────────
+  //  로깅
+  // ───────────────────────────────────────────
+  function log(type, msg) {
+    const line = document.createElement('div');
+    line.className = 'log-line ' + type;
+    const ts = new Date().toLocaleTimeString('ko-KR', { hour12: false });
+    line.textContent = `[${ts}] ${msg}`;
+    logBox.appendChild(line);
+    logBox.scrollTop = logBox.scrollHeight;
+    STATE.logLines.push({ type, msg, ts });
+    // 200줄 초과 시 오래된 로그 삭제
+    while (logBox.children.length > 200) logBox.removeChild(logBox.firstChild);
+  }
+
+  // ───────────────────────────────────────────
+  //  상태 표시 업데이트
+  // ───────────────────────────────────────────
+  function setStatus(state, text) {
+    statusDot.className = 'status-dot ' + state;
+    statusText.textContent = text;
+  }
+
+  function updateTrackBadge(track) {
+    STATE.track = track;
+    let label = '';
+    if (track === 'idle')      { label = '⏳ 트랙 대기 중'; }
+    else if (track === 'A')    { label = '🔵 트랙 A — Web USB 플래싱 시도 중'; }
+    else if (track === 'B')    { label = '🟡 트랙 B — 수동 플래싱 안내'; }
+    else if (track === 'A-failed') { label = '🟡 트랙 A 실패 → 트랙 B로 전환'; }
+    trackBadge.className = 'track-badge ' + (track === 'idle' ? 'idle' : track === 'A' || track === 'A-failed' ? 'a' : 'b');
+    trackBadge.innerHTML = label;
+  }
+
+  // ───────────────────────────────────────────
+  //  Chart.js 설정
+  // ───────────────────────────────────────────
+  const CHART_COLORS = [
+    '#fbb82e', '#58a6ff', '#3fb950', '#f85149',
+    '#a371f7', '#ff8f10', '#79c0ff', '#d2a8ff'
+  ];
+
+  function initChart() {
+    if (STATE.chart) {
+      STATE.chart.destroy();
+      STATE.chart = null;
+    }
+
+    const ctx = canvas.getContext('2d');
+    STATE.chart = new Chart(ctx, {
       type: 'line',
-      data: { labels: [], datasets: [] },
+      data: {
+        datasets: []
+      },
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        scales: {
-          x: { grid: { color: '#334155' }, ticks: { color: '#94a3b8' } },
-          y: { grid: { color: '#334155' }, ticks: { color: '#94a3b8' } }
+        animation: false,
+        interaction: { mode: 'nearest', intersect: false },
+        plugins: {
+          legend: {
+            labels: { color: '#8b949e', font: { size: 11 }, boxWidth: 14, padding: 12 }
+          },
+          tooltip: {
+            backgroundColor: '#161b22',
+            borderColor: '#30363d',
+            borderWidth: 1,
+            titleColor: '#e6edf3',
+            bodyColor: '#8b949e',
+            callbacks: {
+              title: items => '시간: ' + items[0].parsed.x.toFixed(1) + '초',
+              label: item => item.dataset.label + ': ' + item.parsed.y.toFixed(3)
+            }
+          }
         },
-        plugins: { legend: { labels: { color: '#f8fafc' } } }
-      }
-    });
-
-    const chartColors = ['#818cf8', '#34d399', '#fbbf24', '#f87171', '#c084fc'];
-    let colorIndex = 0;
-
-    // --- 1. 깃허브 `sensor.hex` 파일 자동 다운로드 및 WebUSB 플래싱 ---
-    flashGithubHexBtn.addEventListener('click', async () => {
-      try {
-        progressContainer.classList.remove('hidden');
-        updateProgress(0, '깃허브에서 sensor.hex 파일 불러오는 중...');
-
-        // 깃허브 상의 sensor.hex 파일을 fetch로 로드
-        const response = await fetch('./sensor.hex');
-        if (!response.ok) {
-          throw new Error('sensor.hex 파일을 찾을 수 없습니다. 깃허브 리포지토리에 sensor.hex 파일을 올렸는지 확인해 주세요.');
+        scales: {
+          x: {
+            type: 'linear',
+            title: { display: true, text: '경과 시간 (초)', color: '#8b949e', font: { size: 11 } },
+            grid: { color: 'rgba(48,54,61,0.5)' },
+            ticks: { color: '#8b949e', font: { size: 10 } },
+            min: 0,
+          },
+          y: {
+            title: { display: true, text: '센서 값', color: '#8b949e', font: { size: 11 } },
+            grid: { color: 'rgba(48,54,61,0.5)' },
+            ticks: { color: '#8b949e', font: { size: 10 } },
+          }
         }
-
-        const buffer = await response.arrayBuffer();
-        await flashHexBuffer(buffer, 'sensor.hex (깃허브)');
-      } catch (err) {
-        alert('오류 발생: ' + err.message);
-        appendSystemLog('펌웨어 다운로드/업로드 실패: ' + err.message, true);
       }
     });
+  }
 
-    // 내 컴퓨터 파일 선택 시 처리
-    selectHexBtn.addEventListener('click', () => hexFileInput.click());
+  // ───────────────────────────────────────────
+  //  차트 데이터 추가 / 갱신
+  // ───────────────────────────────────────────
+  function addDataPoint(point) {
+    STATE.dataPoints.push(point);
+    STATE.rxCount++;
 
-    hexFileInput.addEventListener('change', (e) => {
-      const file = e.target.files[0];
-      if (file) {
-        fileNameDisplay.textContent = file.name;
-        const fileReader = new FileReader();
-        fileReader.onload = async (event) => {
-          await flashHexBuffer(event.target.result, file.name);
-        };
-        fileReader.readAsArrayBuffer(file);
-      }
+    // 수신률 계산 (최근 1초 슬라이딩 윈도우)
+    const now = performance.now();
+    STATE.rxRateSamples.push(now);
+    while (STATE.rxRateSamples.length > 0 && now - STATE.rxRateSamples[0] > 1000) {
+      STATE.rxRateSamples.shift();
+    }
+    STATE.rxRate = STATE.rxRateSamples.length;
+
+    // 최대 포인트 초과 시 오래된 것부터 제거
+    while (STATE.dataPoints.length > STATE.maxDataPoints) {
+      STATE.dataPoints.shift();
+    }
+
+    updateChart();
+    updateStats();
+  }
+
+  function updateChart() {
+    if (!STATE.chart) return;
+
+    const datasets = [];
+    const channelNames = [];
+    const points = STATE.dataPoints;
+
+    if (points.length === 0) {
+      STATE.chart.data.datasets = [];
+      STATE.chart.update('none');
+      return;
+    }
+
+    // 채널 이름 수집 (첫 번째 포인트 기준)
+    if (points[0] && points[0].channels) {
+      channelNames.push(...Object.keys(points[0].channels));
+    }
+
+    for (let i = 0; i < channelNames.length; i++) {
+      const name = channelNames[i];
+      const color = CHART_COLORS[i % CHART_COLORS.length];
+      const data = points
+        .filter(p => p.channels && p.channels.hasOwnProperty(name))
+        .map(p => ({ x: p.t, y: p.channels[name] }));
+
+      datasets.push({
+        label: name,
+        data,
+        borderColor: color,
+        backgroundColor: color + '22',
+        borderWidth: 1.5,
+        pointRadius: 0,
+        pointHitRadius: 4,
+        tension: 0.15,
+        fill: false,
+      });
+    }
+
+    STATE.chart.data.datasets = datasets;
+    STATE.chart.update('none');
+  }
+
+  function updateStats() {
+    dataCount.textContent = STATE.dataPoints.length;
+
+    if (STATE.dataPoints.length > 0) {
+      const last = STATE.dataPoints[STATE.dataPoints.length - 1];
+      currentValEl.textContent = last.channels
+        ? Object.entries(last.channels)
+            .map(([k, v]) => `${k}=${typeof v === 'number' ? v.toFixed(2) : v}`)
+            .join(' · ')
+        : '—';
+    } else {
+      currentValEl.textContent = '—';
+    }
+
+    rxRateEl.textContent = STATE.rxRate;
+
+    if (STATE.startTime) {
+      const elapsed = (performance.now() - STATE.startTime) / 1000;
+      elapsedTimeEl.textContent = elapsed.toFixed(1) + '초';
+    }
+
+    bufferStatus.textContent =
+      STATE.dataPoints.length > STATE.maxDataPoints * 0.8
+        ? '⚠ 거의 가득 참'
+        : STATE.dataPoints.length > 0
+          ? `${Math.round(STATE.dataPoints.length / STATE.maxDataPoints * 100)}%`
+          : '비어 있음';
+
+    exportCsvBtn.disabled = STATE.dataPoints.length === 0;
+    exportJsonBtn.disabled = STATE.dataPoints.length === 0;
+    clearDataBtn.disabled  = STATE.dataPoints.length === 0;
+    resetZoomBtn.disabled  = STATE.dataPoints.length === 0;
+  }
+
+  // ───────────────────────────────────────────
+  //  데이터 내보내기
+  // ───────────────────────────────────────────
+  function exportCSV() {
+    if (STATE.dataPoints.length === 0) return;
+    const header = ['시간(초)', ...Object.keys(STATE.dataPoints[0].channels || {})].join(',');
+    const rows = STATE.dataPoints.map(p => {
+      const vals = Object.values(p.channels || {}).map(v =>
+        typeof v === 'number' ? v.toFixed(5) : String(v).replace(',', ' ')
+      );
+      return [p.t.toFixed(3), ...vals].join(',');
     });
+    downloadFile([header, ...rows].join('\n'), 'microbit-data.csv', 'text/csv');
+    log('ok', `CSV 내보내기 완료 (${STATE.dataPoints.length}행)`);
+  }
 
-    // 공통 WebUSB 펌웨어 플래싱 (라이팅) 함수
-    async function flashHexBuffer(arrayBuffer, sourceName) {
-      if (!('usb' in navigator)) {
-        alert('현재 브라우저는 WebUSB를 지원하지 않습니다. Chrome 또는 Edge 브라우저를 이용해 주세요.');
+  function exportJSON() {
+    if (STATE.dataPoints.length === 0) return;
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      totalPoints: STATE.dataPoints.length,
+      baudRate: STATE.baudRate,
+      data: STATE.dataPoints,
+    };
+    downloadFile(JSON.stringify(payload, null, 2), 'microbit-data.json', 'application/json');
+    log('ok', `JSON 내보내기 완료 (${STATE.dataPoints.length}포인트)`);
+  }
+
+  function downloadFile(content, filename, mimeType) {
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  function clearData() {
+    if (STATE.dataPoints.length === 0) return;
+    const n = STATE.dataPoints.length;
+    STATE.dataPoints = [];
+    STATE.rxRateSamples = [];
+    STATE.rxRate = 0;
+    if (STATE.chart) {
+      STATE.chart.data.datasets = [];
+      STATE.chart.update('none');
+    }
+    updateStats();
+    log('info', `데이터 초기화 완료 (${n}포인트 삭제)`);
+  }
+
+  // ───────────────────────────────────────────
+  //  hex 파일 처리
+  // ───────────────────────────────────────────
+  function handleHexFile(file) {
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith('.hex')) {
+      log('err', '오류: .hex 파일이 아닙니다. (' + file.name + ')');
+      alert('업로드한 파일은 .hex 확장자가 아닙니다.\n.hex 파일만 업로드할 수 있습니다.');
+      return;
+    }
+    if (file.size < 100) {
+      log('err', '오류: hex 파일이 너무 작습니다 (' + file.size + '바이트).');
+      alert('파일이 너무 작습니다. 유효한 hex 파일인지 확인하세요.');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      log('err', '오류: hex 파일이 너무 큽니다 (' + file.size + '바이트).');
+      alert('파일 크기가 5MB를 초과합니다. 더 작은 파일을 선택하세요.');
+      return;
+    }
+
+    STATE.hexFile = file;
+    STATE.hexFileName = file.name;
+    STATE.hexFileSize = file.size;
+
+    const reader = new FileReader();
+    reader.onload = function () {
+      STATE.hexFileArrayBuffer = reader.result;
+      updateFileInfo();
+      log('ok', `hex 파일 로드: ${file.name} (${formatBytes(file.size)})`);
+      // 트랙 B 활성화 (항상 가능)
+      updateTrackBadge('B');
+      enableDownload();
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  function updateFileInfo() {
+    if (!STATE.hexFile) { fileInfo.classList.add('hidden'); return; }
+    fileInfo.classList.remove('hidden');
+    fileInfo.innerHTML = `
+      <div class="file-info">
+        <span style="color:var(--accent);font-weight:600;">📦</span>
+        <span class="fi-name">${escapeHtml(STATE.hexFileName)}</span>
+        <span class="fi-size">${formatBytes(STATE.hexFileSize)}</span>
+      </div>
+    `;
+  }
+
+  function enableDownload() {
+    downloadHexBtn.disabled = false;
+  }
+
+  function downloadHex() {
+    if (!STATE.hexFile) return;
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(STATE.hexFile);
+    a.download = STATE.hexFileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    log('ok', `hex 다운로드: ${STATE.hexFileName}`);
+  }
+
+  function formatBytes(bytes) {
+    if (bytes < 1024) return bytes + 'B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + 'KB';
+    return (bytes / (1024 * 1024)).toFixed(2) + 'MB';
+  }
+
+  function escapeHtml(str) {
+    return String(str).replace(/[&<>"']/g, c => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[c]));
+  }
+
+  // ───────────────────────────────────────────
+  //  트랙 A: Web USB 플래싱 시도
+  // ───────────────────────────────────────────
+  async function attemptWebUSB() {
+    if (!('usb' in navigator)) {
+      log('err', 'Web USB API가 이 브라우저에서 지원되지 않습니다. 트랙 B로 진행합니다.');
+      updateTrackBadge('A-failed');
+      showTrackBGuide();
+      return;
+    }
+
+    if (!STATE.hexFile || !STATE.hexFileArrayBuffer) {
+      log('err', 'hex 파일이 업로드되지 않았습니다. 먼저 .hex 파일을 업로드하세요.');
+      return;
+    }
+
+    updateTrackBadge('A');
+    log('info', '🔵 트랙 A: Web USB 플래싱 시도 시작…');
+
+    try {
+      // 1. 장치 요청
+      const device = await navigator.usb.requestDevice({ filters: [] });
+      log('info', `장치 선택됨: ${device.productName || 'unknown'} (VID:PID ${device.vendorId}:${device.productId})`);
+
+      // 2. 이미 열려있으면 닫고 다시 열기
+      if (device.opened) device.close();
+      await device.open();
+
+      // 3. 구성 선택 시도
+      try {
+        if (device.configuration === null) {
+          await device.selectConfiguration(1);
+        }
+      } catch (e) {
+        log('err', `구성 선택 실패: ${e.message}`);
+        updateTrackBadge('A-failed');
+        showTrackBGuide();
         return;
       }
 
-      // 업로드 중 시리얼 통신 잠시 해제
-      if (isConnected) await disconnectSerial();
-
-      try {
-        progressContainer.classList.remove('hidden');
-        updateProgress(0, '마이크로비트 장치 검색 중...');
-
-        // ARM Micro:bit Vendor ID: 0x0d28
-        const device = await navigator.usb.requestDevice({
-          filters: [{ vendorId: 0x0d28 }]
-        });
-
-        const transport = new DAPjs.WebUSB(device);
-        const target = new DAPjs.DAPLink(transport);
-
-        target.on(DAPjs.DAPLink.EVENT_PROGRESS, (progress) => {
-          const percent = Math.floor(progress * 100);
-          updateProgress(percent, `마이크로비트에 ${sourceName} 작성 중...`);
-        });
-
-        await target.connect();
-        await target.flash(arrayBuffer);
-        await target.disconnect();
-
-        updateProgress(100, '업로드 완료!');
-        appendSystemLog(`[성공] ${sourceName} 파일이 마이크로비트에 성공적으로 업로드되었습니다.`);
-        alert('마이크로비트에 펌웨어 업로드가 완료되었습니다!');
-      } catch (err) {
-        console.error(err);
-        appendSystemLog('업로드 중 오류 발생: ' + err.message, true);
+      // 4. 인터페이스 선택 시도 (여러 개 있을 수 있음)
+      const ifaces = device.configuration.interfaces;
+      let targetIface = null;
+      for (const iface of ifaces) {
+        try {
+          await device.selectInterface(iface.interfaceNumber);
+          targetIface = iface;
+          log('info', `인터페이스 선택: #${iface.interfaceNumber} (클래스 ${iface.interfaceClass})`);
+          break;
+        } catch (e) {
+          // 다른 인터페이스 시도
+        }
       }
-    }
 
-    function updateProgress(percent, statusMsg) {
-      progressBar.style.width = percent + '%';
-      progressPercent.textContent = percent + '%';
-      if (statusMsg) progressStatus.textContent = statusMsg;
-    }
-
-    // --- 2. Web Serial 연결 및 데이터 모니터링 ---
-    connectBtn.addEventListener('click', async () => {
-      if (isConnected) await disconnectSerial();
-      else await connectSerial();
-    });
-
-    clearLogBtn.addEventListener('click', () => { serialLog.innerHTML = ''; });
-    exportCsvBtn.addEventListener('click', exportToCSV);
-
-    async function connectSerial() {
-      try {
-        port = await navigator.serial.requestPort();
-        await port.open({ baudRate: parseInt(baudRateSelect.value, 10) });
-
-        isConnected = true;
-        updateUIConnected(true);
-        appendSystemLog('시리얼 포트 연결 성공!');
-        readSerialData();
-      } catch (err) {
-        appendSystemLog('연결 오류: ' + err.message, true);
+      if (!targetIface) {
+        // 인터페이스를 하나도 선택 못했으면 기본 시도
+        try {
+          await device.selectInterface(0);
+          targetIface = device.configuration.interfaces[0];
+        } catch (e) {
+          log('err', `인터페이스 선택 실패: ${e.message}`);
+          updateTrackBadge('A-failed');
+          showTrackBGuide();
+          return;
+        }
       }
-    }
 
-    async function disconnectSerial() {
-      if (reader) await reader.cancel();
-      if (port) await port.close();
-      isConnected = false;
-      updateUIConnected(false);
-      appendSystemLog('시리얼 포트 연결 해제됨.');
-    }
+      // 5. hex 데이터를 청크 단위로 전송 시도
+      const chunkSize = 64 * 1024; // 64KB
+      const buf = STATE.hexFileArrayBuffer;
+      let offset = 0;
+      const total = buf.byteLength;
+      const startTime = performance.now();
+      let lastProgressLog = 0;
 
-    function updateUIConnected(connected) {
-      if (connected) {
-        statusBadge.className = "flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 px-3 py-1.5 rounded-lg text-xs font-semibold";
-        statusText.textContent = "시리얼 연결됨";
-        connectBtn.textContent = "시리얼 연결 해제";
-        connectBtn.classList.replace('bg-indigo-600', 'bg-rose-600');
-        exportCsvBtn.disabled = false;
-        exportCsvBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+      // 벌크 전송 아웃 엔드포인트 찾기
+      let bulkOutEndpoint = null;
+      for (const ep of targetIface.alternates[0].endpoints) {
+        if (ep.direction === 'out' && ep.type === 'bulk') {
+          bulkOutEndpoint = ep.endpointNumber;
+          break;
+        }
+      }
+
+      if (bulkOutEndpoint === null) {
+        // 제어 전송으로 시도 (제한적이지만 호환 가능성)
+        log('info', '벌크 아웃 엔드포인트를 찾지 못했습니다. 제어 전송으로 시도합니다.');
+        try {
+          await device.controlTransferOut({
+            requestType: 'vendor',
+            recipient: 'device',
+            request: 0x01,
+            value: 0x00,
+            index: 0x00,
+          }, new Uint8Array(buf));
+          const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
+          log('ok', `✅ Web USB 플래싱 완료 (제어 전송, ${elapsed}초)`);
+          updateTrackBadge('A');
+          log('info', '트랙 A 성공! micro:bit가 재부팅됩니다. 완료 후 시리얼 연결을 다시 시도하세요.');
+          return;
+        } catch (e) {
+          log('err', `제어 전송 실패: ${e.message}`);
+          updateTrackBadge('A-failed');
+          showTrackBGuide();
+          return;
+        }
+      }
+
+      // 벌크 전송 루프
+      while (offset < total) {
+        const end = Math.min(offset + chunkSize, total);
+        const slice = new Uint8Array(buf, offset, end - offset);
+        try {
+          await device.transferOut(bulkOutEndpoint, slice);
+        } catch (e) {
+          // 부분 실패 처리
+        }
+        offset = end;
+        const progress = Math.round(offset / total * 100);
+        const now = performance.now();
+        if (now - lastProgressLog > 500) {
+          log('info', `전송 중: ${progress}% (${formatBytes(offset)} / ${formatBytes(total)})`);
+          lastProgressLog = now;
+        }
+      }
+
+      const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
+      log('ok', `✅ Web USB 플래싱 완료 (벌크 전송, ${elapsed}초)`);
+      updateTrackBadge('A');
+      log('info', '트랙 A 성공! micro:bit가 재부팅됩니다. 완료 후 시리얼 연결을 다시 시도하세요.');
+
+    } catch (err) {
+      if (err.name === 'NotFoundError' || err.message?.includes('cancel')) {
+        log('info', '사용자가 장치 선택을 취소했습니다. 트랙 B로 진행합니다.');
       } else {
-        statusBadge.className = "flex items-center gap-2 bg-rose-500/10 border border-rose-500/30 text-rose-400 px-3 py-1.5 rounded-lg text-xs font-semibold";
-        statusText.textContent = "시리얼 연결 해제됨";
-        connectBtn.textContent = "시리얼 모니터 연결";
-        connectBtn.classList.replace('bg-rose-600', 'bg-indigo-600');
+        log('err', `Web USB 오류: ${err.message}`);
       }
+      updateTrackBadge('A-failed');
+      showTrackBGuide();
+    }
+  }
+
+  function showTrackBGuide() {
+    trackBGuide.classList.remove('hidden');
+    // 이미 열려있으면 접기
+    if (!guideContent.classList.contains('hidden')) return;
+    // 자동 펼침
+    setTimeout(() => {
+      guideContent.classList.remove('hidden');
+      toggleGuideBtn.textContent = '▲ 안내 접기';
+    }, 300);
+  }
+
+  // ───────────────────────────────────────────
+  //  트랙 B: 수동 플래싱 안내 표시
+  // ───────────────────────────────────────────
+  function showTrackB() {
+    updateTrackBadge('B');
+    showTrackBGuide();
+  }
+
+  // ───────────────────────────────────────────
+  //  Web Serial 연결
+  // ───────────────────────────────────────────
+  async function connectSerial() {
+    if (!('serial' in navigator)) {
+      log('err', 'Web Serial API가 이 브라우저에서 지원되지 않습니다. Chrome 또는 Edge를 사용하세요.');
+      setStatus('error', 'Web Serial 미지원');
+      return;
     }
 
-    async function readSerialData() {
-      const textDecoder = new TextDecoderStream();
-      port.readable.pipeTo(textDecoder.writable);
-      reader = textDecoder.readable.getReader();
+    if (STATE.connected) {
+      log('info', '이미 연결되어 있습니다. 먼저 연결을 끊으세요.');
+      return;
+    }
 
-      let buffer = '';
-      try {
-        while (true) {
-          const { value, done } = await reader.read();
-          if (done) break;
+    STATE.disconnectedIntentionally = false;
+    setStatus('connecting', '포트 선택 중…');
+    log('info', '🔗 시리얼 포트 선택 요청…');
 
-          buffer += value;
-          const lines = buffer.split('\n');
-          buffer = lines.pop();
+    try {
+      const port = await navigator.serial.requestPort();
+      await connectToPort(port);
+    } catch (err) {
+      if (err.name === 'NotFoundError') {
+        log('info', '포트 선택이 취소되었습니다.');
+        setStatus('idle', '대기 중');
+      } else {
+        log('err', `연결 오류: ${err.message}`);
+        setStatus('error', '연결 오류');
+      }
+    }
+  }
 
-          for (const line of lines) {
-            const clean = line.trim();
-            if (clean.length > 0) processIncomingLine(clean);
+  async function connectToPort(port) {
+    const baud = STATE.baudRate;
+
+    try {
+      await port.open({ baudRate: baud });
+    } catch (err) {
+      log('err', `포트 열기 실패 (보레이트 ${baud}): ${err.message}`);
+      setStatus('error', `보레이트 오류: ${err.message}`);
+      return;
+    }
+
+    STATE.serial = port;
+    STATE.connected = true;
+    STATE.disconnectedIntentionally = false;
+    STATE.startTime = performance.now();
+    STATE.dataPoints = [];
+    STATE.rxRateSamples = [];
+    STATE.rxRate = 0;
+
+    portName.textContent = port.getInfo().usbProductId
+      ? `USB 제품 ID: 0x${(port.getInfo().usbProductId || 0).toString(16).padStart(4, '0')}`
+      : '(시리얼 포트)';
+    portBaud.textContent = baud;
+    portInfo.classList.remove('hidden');
+
+    setStatus('connected', `연결됨 · ${baud} bps`);
+    log('ok', `시리얼 연결 성공 (보레이트 ${baud} bps)`);
+
+    connectBtn.textContent = '🔗 다시 연결';
+    disconnectBtn.disabled = false;
+    connectBtn.disabled = true;
+
+    // 스트림 읽기 시작
+    startReading(port);
+
+    // 재연결 감지
+    port.on disconnect = () => {
+      log('info', '장치가 분리되었습니다 (USB 케이블 제거 또는 포트 닫힘).');
+      setStatus('idle', '연결 끊어짐');
+      STATE.connected = false;
+      connectBtn.textContent = '🔗 연결';
+      connectBtn.disabled = false;
+      disconnectBtn.disabled = true;
+      portInfo.classList.add('hidden');
+      if (STATE.reconnectTimer) clearTimeout(STATE.reconnectTimer);
+      // 자동 재연결 시도 (의도적 끊김이 아닐 때만)
+      if (!STATE.disconnectedIntentionally) {
+        scheduleReconnect();
+      }
+    };
+  }
+
+  function scheduleReconnect() {
+    const now = performance.now();
+    if (now - STATE.lastReconnectAttempt < 3000) return; // 3초에 한 번
+    STATE.lastReconnectAttempt = now;
+    log('info', '3초 후 재연결을 시도합니다…');
+    STATE.reconnectTimer = setTimeout(() => {
+      if (!STATE.connected) {
+        log('info', '자동 재연결 시도…');
+        navigator.serial.requestPort()
+          .then(port => connectToPort(port))
+          .catch(() => {}); // 사용자가 취소하면 조용히
+      }
+    }, 3000);
+  }
+
+  async function disconnectSerial() {
+    STATE.disconnectedIntentionally = true;
+    if (STATE.reconnectTimer) { clearTimeout(STATE.reconnectTimer); STATE.reconnectTimer = null; }
+    if (STATE.reader) {
+      try { STATE.reader.cancel(); } catch (e) {}
+      STATE.reader = null;
+    }
+    if (STATE.serial) {
+      try { await STATE.serial.close(); } catch (e) {}
+      STATE.serial = null;
+    }
+    STATE.connected = false;
+    STATE.startTime = null;
+    setStatus('idle', '대기 중');
+    connectBtn.textContent = '🔗 연결';
+    connectBtn.disabled = false;
+    disconnectBtn.disabled = true;
+    portInfo.classList.add('hidden');
+    log('info', '연결이 끊어졌습니다.');
+  }
+
+  // ───────────────────────────────────────────
+  //  시리얼 스트림 읽기
+  // ───────────────────────────────────────────
+  async function startReading(port) {
+    const textDecoder = new TextDecoder();
+    let buffer = '';
+
+    try {
+      STATE.reader = port.readable.getReader();
+      while (true) {
+        const { value, done } = await STATE.reader.read();
+        if (done) break;
+
+        const text = textDecoder.decode(value, { stream: true });
+        buffer += text;
+
+        // 줄 단위로 파싱
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || ''; // 마지막 불완전한 줄은 버퍼 유지
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+          parseLine(trimmed);
+        }
+      }
+    } catch (err) {
+      if (STATE.connected) {
+        log('err', `읽기 스트림 오류: ${err.message}`);
+      }
+    } finally {
+      try { STATE.reader.cancel(); } catch (e) {}
+      STATE.reader = null;
+    }
+  }
+
+  // ───────────────────────────────────────────
+  //  데이터 파싱
+  // ───────────────────────────────────────────
+  function parseLine(line) {
+    const rawLine = line;
+    const now = (performance.now() - STATE.startTime) / 1000;
+
+    try {
+      // CSV 형식: sensorName,value  또는  sensorName,v1,v2,v3
+      // 예: temperature,25.3  /  accel,0.1,0.2,0.3
+      const csvMatch = line.match(/^([a-zA-Z0-9_]+),([\d.\-eE+]+)(?:,[\d.\-eE+]+)*$/);
+      if (csvMatch) {
+        const channelName = csvMatch[1];
+        const values = csvMatch[2].split(',').map(v => parseFloat(v));
+        if (values.some(isNaN)) return; // 파싱 실패
+
+        const channels = {};
+        if (values.length === 1) {
+          channels[channelName] = values[0];
+        } else {
+          // 다중 축 값: channelName_0, channelName_1, ...
+          values.forEach((v, i) => { channels[channelName + (i > 0 ? '_' + i : '')] = v; });
+        }
+        addDataPoint({ t: now, channels });
+        return;
+      }
+
+      // JSON 라인: {"temperature":25.3} 또는 {"name":"temp","value":25.3}
+      if (line.startsWith('{')) {
+        const obj = JSON.parse(line);
+        let channels = {};
+        if (obj.name && typeof obj.value === 'number') {
+          channels[obj.name] = obj.value;
+        } else if (obj.value !== undefined) {
+          channels['value'] = obj.value;
+        } else {
+          // 객체 전체 중 숫자 값만 추출
+          for (const [k, v] of Object.entries(obj)) {
+            if (typeof v === 'number') channels[k] = v;
           }
         }
-      } catch (e) {
-      } finally {
-        reader.releaseLock();
-      }
-    }
-
-    function processIncomingLine(line) {
-      const timeStr = new Date().toLocaleTimeString();
-      appendDataLog(timeStr, line);
-      serialLogsHistory.push({ time: timeStr, raw: line });
-
-      const parsed = parseLine(line);
-      if (Object.keys(parsed).length > 0) updateDashboard(parsed, timeStr);
-    }
-
-    function parseLine(line) {
-      try { const json = JSON.parse(line); if (typeof json === 'object') return json; } catch(e){}
-      if (line.includes(':')) {
-        const obj = {};
-        line.split(',').forEach(p => {
-          const [k, v] = p.split(':').map(s => s.trim());
-          if (k && !isNaN(parseFloat(v))) obj[k] = parseFloat(v);
-        });
-        if (Object.keys(obj).length > 0) return obj;
-      }
-      const num = parseFloat(line);
-      return !isNaN(num) ? { '값': num } : {};
-    }
-
-    function updateDashboard(data, timeStr) {
-      if (cardsGrid.querySelector('.col-span-full')) cardsGrid.innerHTML = '';
-
-      if (realtimeChart.data.labels.length >= maxDataPoints) realtimeChart.data.labels.shift();
-      realtimeChart.data.labels.push(timeStr);
-
-      for (const [key, value] of Object.entries(data)) {
-        let card = document.getElementById(`card-${key}`);
-        if (!card) {
-          card = document.createElement('div');
-          card.id = `card-${key}`;
-          card.className = "bg-slate-800 border border-slate-700/80 rounded-xl p-4 shadow-lg";
-          card.innerHTML = `<div class="text-xs text-slate-400 uppercase">${key}</div><div id="val-${key}" class="text-3xl font-bold text-white mt-1">0</div>`;
-          cardsGrid.appendChild(card);
+        if (Object.keys(channels).length > 0) {
+          addDataPoint({ t: now, channels });
+          return;
         }
-        document.getElementById(`val-${key}`).textContent = value;
-
-        let dataset = realtimeChart.data.datasets.find(d => d.label === key);
-        if (!dataset) {
-          const color = chartColors[colorIndex++ % chartColors.length];
-          dataset = { label: key, data: [], borderColor: color, backgroundColor: color + '20', tension: 0.3, fill: true };
-          realtimeChart.data.datasets.push(dataset);
-        }
-        if (dataset.data.length >= maxDataPoints) dataset.data.shift();
-        dataset.data.push(value);
       }
-      realtimeChart.update();
-    }
 
-    function appendDataLog(time, text) {
-      const el = document.createElement('div');
-      el.innerHTML = `<span class="text-slate-500">[${time}]</span> ${text}`;
-      serialLog.appendChild(el);
-      serialLog.scrollTop = serialLog.scrollHeight;
-    }
+      // 간단한 키:값 형식: temperature=25.3
+      const kvMatch = line.match(/^([a-zA-Z0-9_]+)=([\d.\-eE+]+)$/);
+      if (kvMatch) {
+        const v = parseFloat(kvMatch[2]);
+        if (!isNaN(v)) {
+          addDataPoint({ t: now, channels: { [kvMatch[1]]: v } });
+          return;
+        }
+      }
 
-    function appendSystemLog(text, isError = false) {
-      const el = document.createElement('div');
-      el.className = isError ? 'text-rose-400 font-bold' : 'text-slate-400 italic';
-      el.textContent = `[시스템] ${text}`;
-      serialLog.appendChild(el);
-      serialLog.scrollTop = serialLog.scrollHeight;
+      // 위 형식 모두 실패 → 로그만 남기고 그래프는 제외
+      log('err', `파싱 실패: ${rawLine.substring(0, 60)}`);
+    } catch (e) {
+      log('err', `파싱 예외: ${rawLine.substring(0, 50)} (${e.message})`);
     }
+  }
 
-    function exportToCSV() {
-      if (!serialLogsHistory.length) return alert('저장할 데이터가 없습니다.');
-      let csv = "Timestamp,Data\n" + serialLogsHistory.map(r => `"${r.time}","${r.raw}"`).join("\n");
-      const a = document.createElement('a');
-      a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
-      a.download = `microbit_data_${Date.now()}.csv`;
-      a.click();
+  // ───────────────────────────────────────────
+  //  이벤트 바인딩
+  // ───────────────────────────────────────────
+
+  // 연결
+  connectBtn.addEventListener('click', connectSerial);
+  disconnectBtn.addEventListener('click', disconnectSerial);
+
+  // 보레이트 적용
+  baudApplyBtn.addEventListener('click', () => {
+    const val = parseInt(baudInput.value, 10);
+    if (isNaN(val) || val < 1200 || val > 921600) {
+      log('err', '보레이트는 1200~921600 사이여야 합니다.');
+      return;
     }
-  </script>
+    STATE.baudRate = val;
+    log('info', `보레이트를 ${val} bps로 변경했습니다 (다음 연결부터 적용).`);
+    if (STATE.connected) {
+      log('info', '연결 중에는 보레이트를 변경할 수 없습니다. 먼저 연결을 끊으세요.');
+    }
+  });
+
+  // hex 파일 업로드 (드래그 & 드롭 + 입력)
+  dropZone.addEventListener('dragover', e => {
+    e.preventDefault();
+    dropZone.classList.add('drag-over');
+  });
+  dropZone.addEventListener('dragleave', () => {
+    dropZone.classList.remove('drag-over');
+  });
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('drag-over');
+    const files = e.dataTransfer.files;
+    if (files.length > 0) handleHexFile(files[0]);
+  });
+  hexFileInput.addEventListener('change', () => {
+    if (hexFileInput.files.length > 0) handleHexFile(hexFileInput.files[0]);
+  });
+
+  // hex 다운로드
+  downloadHexBtn.addEventListener('click', downloadHex);
+
+  // Web USB 재시도
+  retryWebUSBBtn.addEventListener('click', attemptWebUSB);
+
+  // 트랙 B 안내 토글
+  toggleGuideBtn.addEventListener('click', () => {
+    guideContent.classList.toggle('hidden');
+    toggleGuideBtn.textContent = guideContent.classList.contains('hidden')
+      ? '▼ 수동 플래싱 안내 펼치기'
+      : '▲ 안내 접기';
+  });
+
+  // 데이터 내보내기
+  exportCsvBtn.addEventListener('click', exportCSV);
+  exportJsonBtn.addEventListener('click', exportJSON);
+  clearDataBtn.addEventListener('click', clearData);
+  resetZoomBtn.addEventListener('click', () => {
+    if (STATE.chart) {
+      STATE.chart.resetZoom && STATE.chart.resetZoom();
+      // Chart.js 4.x: zoom 플러그인 미설치이므로 수동으로 x축 범위 리셋
+      STATE.chart.options.scales.x.min = 0;
+      STATE.chart.update();
+    }
+  });
+
+  // hex 파일 선택 시 트랙 B로 전환
+  // (업로드만으로 트랙 B 활성화)
+
+  // ───────────────────────────────────────────
+  //  초기화
+  // ───────────────────────────────────────────
+  function init() {
+    checkBrowser();
+    initChart();
+    updateStats();
+
+    log('info', ' micro:bit Web Serial 앱 시작');
+    log('info', ' 사용 방법:');
+    log('info', '  1. Chrome/Edge에서 이 페이지를 엽니다 (HTTPS 또는 localhost 필요)');
+    log('info', '  2. .hex 파일을 업로드합니다 (Web USB 플래싱 시도 + 다운로드 제공)');
+    log('info', '  3. [연결] 버튼으로 micro:bit 시리얼 포트에 연결합니다');
+    log('info', '  4. micro:bit에서 전송된 데이터가 실시간으로 그래프에 표시됩니다');
+    log('info', '  5. 데이터로 CSV/JSON 다운로드 가능');
+
+    // Web USB 버튼 바인딩 (업로드 후 활성화)
+    // 트랙 A 시도 버튼은 업로드 후 노출
+    log('info', `Web Serial 지원: ${'serial' in navigator ? '✅' : '❌'} · Web USB 지원: ${'usb' in navigator ? '✅' : '❌'}`);
+  }
+
+  init();
+
+})();
+</script>
 </body>
 </html>
